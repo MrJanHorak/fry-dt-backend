@@ -4,6 +4,7 @@ const Schema = mongoose.Schema;
 
 const practicedWords = new Schema({
   word: String,
+  mastered: { type: Boolean },
   timesPracticed: { type: Number, default: 0 },
   timesCorrect: { type: Number, default: 0 },
   timesIncorrect: { type: Number, default: 0 },
