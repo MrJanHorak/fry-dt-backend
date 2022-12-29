@@ -1,8 +1,16 @@
 import mongoose from 'mongoose';
 
-const schema = mongoose.Schema;
+const Schema = mongoose.Schema;
 
-const profileSchema = new schema({
+const practicedWords = new Schema({
+  word: String,
+  timesPracticed: { type: Number, default: 0 },
+  timesCorrect: { type: Number, default: 0 },
+  timesIncorrect: { type: Number, default: 0 },
+  streak: { type: Number, default: 0 },
+});
+
+const profileSchema = new Schema({
   email: { type: String, required: true, lowercase: true },
   name: { type: String, required: true },
   avatar: { type: String, rquired: true },
