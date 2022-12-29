@@ -12,7 +12,7 @@ const practicedWords = new Schema({
 });
 
 const groups = new Schema({
-  students: [{ type: mongoose.Schema.Types.OnjectId, ref: 'Profile' }],
+  students: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Profile' }],
   commonWords: [practicedWords],
 });
 
@@ -22,7 +22,8 @@ const profileSchema = new Schema({
   avatar: { type: String, rquired: true },
   grade: { type: Number, required: true },
   role: { type: String, required: true },
-  students: [{ type: mongoose.Schema.Types.OnjectId, ref: 'Profile' }],
+  students: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Profile' }],
+  groups: [groups],
   pitch: { type: Number, default: 1 },
   rate: { type: Number, default: 1 },
   voice: { type: Number, default: 0 },
