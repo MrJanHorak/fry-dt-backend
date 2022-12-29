@@ -13,7 +13,7 @@ const practicedWords = new Schema({
 const groups = new Schema({
   students: [{ type: mongoose.Schema.Types.OnjectId, ref: 'Profile' }],
   commonWords: [practicedWords],
-})
+});
 
 const profileSchema = new Schema({
   email: { type: String, required: true, lowercase: true },
@@ -27,7 +27,7 @@ const profileSchema = new Schema({
   voice: { type: Number, default: 0 },
   practicedWords: [practicedWords],
   fryGradelevel: { type: String },
-  tested: { type: Number, default: 0,},
+  tested: { type: Number, default: 0 },
   isAdmin: { type: Boolean, default: false },
 });
 
