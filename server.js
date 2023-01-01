@@ -1,21 +1,19 @@
 import 'dotenv/config.js';
 
 import express from 'express';
-import bodyParser from 'body-parser';
+import logger from 'morgan';
 import cors from 'cors';
-
-// connect to MondgoDB with mongoose
-import('./config/database.js');
 
 // import routes
 import { router as authRouter } from './routes/auth.js';
 import { router as profilesRouter } from './routes/profiles.js';
 
+// connect to MondgoDB with mongoose
+import('./config/database.js');
+
 // create the express app
 const app = express();
-const port = process.env.PORT;
 
-app.use(bodyParser.urlencoded({ extended: true }));
 app.use(
   cors({
     origin: '*',
@@ -23,12 +21,12 @@ app.use(
     methods: 'GET, PUT, POST',
   })
 );
-app.use;
-app.use(bodyParser.json());
+app.use(logger('dev'));
+app.use(express.json());
 
-// router middleware
-app.use('api/auth', authRouter);
-app.use('api/profiles', profilesRouter);
+// routes
+app.use("/api/auth", authRouter);
+app.use("/api/profiles", profilesRouter);
 
 // catch 404
 app.use(function (req, res, next) {
@@ -39,8 +37,4 @@ app.use(function (err, req, res, next) {
   res.status(err.status || 500).json({ err: err.message });
 });
 
-app.get('/', (req, res) => {
-  res.send('Hello World!');
-});
-
-app.listen(port, () => console.log(`Server is listening on port ${port}`));
+export { app };
