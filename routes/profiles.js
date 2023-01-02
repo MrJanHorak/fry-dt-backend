@@ -9,7 +9,7 @@ const router = Router();
 router.use(decodeUserFromToken);
 router.get('/', checkAuth, profilesCtrl.index);
 router.get('/:id', checkAuth, profilesCtrl.show);
-router.get('/:id', checkAuth, profilesCtrl.update);
+router.put('/:id', checkAuth, profilesCtrl.update);
 router.post('/:id/practicedWords', checkAuth, profilesCtrl.addPracticedWord);
 router.put('/:id/practicedWords/:practicedWordId', checkAuth,profilesCtrl.updatePracticedWord);
 
