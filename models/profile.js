@@ -19,7 +19,7 @@ const groups = new Schema({
 const profileSchema = new Schema({
   email: { type: String, required: true, lowercase: true },
   name: { type: String, required: true },
-  avatar: { type: String, rquired: true },
+  avatar: { type: String, required: true },
   grade: { type: Number, required: true },
   role: { type: String, required: true },
   students: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Profile' }],

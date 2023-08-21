@@ -60,7 +60,7 @@ function addStudent(req, res) {
                 )
                 .catch((err) => {
                   Profile.findByIdAndDelete(req.body.profile);
-                  res.status(500).json({ err: err.errmsg });
+                  res.status(500).json({ err: err.message });
                 });
             })
           );
