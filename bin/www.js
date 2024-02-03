@@ -62,7 +62,9 @@ io.on('connection', (socket) => {
     let chatRoomUsers = allUsers.filter((user) => user.room === room)
     socket.to(room).emit('chatroom_users', chatRoomUsers)
     socket.emit('chatroom_users', chatRoomUsers)
+
     console.log(`${username} has joined the chat`)
+
   })
 
   socket.on('send_message', (data) => {
