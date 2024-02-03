@@ -2,6 +2,12 @@ import { User } from '../models/user.js';
 import { Profile } from '../models/profile.js';
 import jwt from 'jsonwebtoken';
 
+/**
+ * Handles the signup functionality.
+ * 
+ * @param {Object} req - The request object.
+ * @param {Object} res - The response object.
+ */
 function signup(req, res) {
   Profile.findOne({ email: req.body.email })
     .then((profile) => {
@@ -29,6 +35,12 @@ function signup(req, res) {
     });
 }
 
+/**
+ * Adds a student to the system.
+ * 
+ * @param {Object} req - The request object.
+ * @param {Object} res - The response object.
+ */
 function addStudent(req, res) {
   Profile.findOne({ name: req.body.name })
     .then((profile) => {
@@ -89,6 +101,11 @@ function login(req, res) {
     });
 }
 
+/**
+ * Change the password for the authenticated user.
+ * @param {Object} req - The request object.
+ * @param {Object} res - The response object.
+ */
 function changePassword(req, res) {
   User.findById(req.user._id).then((user) => {
     if (!user) return res.status(401).json({ err: 'User not found' });
@@ -108,6 +125,11 @@ function changePassword(req, res) {
 
 /* --== Helper Functions ==-- */
 
+/**
+ * Creates a JSON Web Token (JWT) for the given user.
+ * @param {Object} user - The user object.
+ * @returns {string} - The generated JWT.
+ */
 function createJWT(user) {
   return jwt.sign({ user }, process.env.SECRET, { expiresIn: '24h' });
 }

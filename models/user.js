@@ -2,6 +2,17 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcrypt';
 const SALT_ROUNDS = 6;
 
+/**
+ * User Schema
+ * @typedef {Object} UserSchema
+ * @property {string} name - The name of the user.
+ * @property {string} email - The email of the user.
+ * @property {string} password - The password of the user.
+ * @property {mongoose.Schema.Types.ObjectId} profile - The profile of the user.
+ * @property {string} role - The role of the user.
+ * @property {Date} createdAt - The date when the user was created.
+ * @property {Date} updatedAt - The date when the user was last updated.
+ */
 const userSchema = new mongoose.Schema(
   {
     name: String,
