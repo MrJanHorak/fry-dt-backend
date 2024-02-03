@@ -63,13 +63,8 @@ io.on('connection', (socket) => {
     socket.to(room).emit('chatroom_users', chatRoomUsers)
     socket.emit('chatroom_users', chatRoomUsers)
 
-    //   // Get last 100 messages sent in the chat room
-    //   harperGetMessages(room)
-    //     .then((last100Messages) => {
-    //       // console.log('latest messages', last100Messages);
-    //       socket.emit('last_100_messages', last100Messages);
-    //     })
-    //     .catch((err) => console.log(err));
+    console.log(`${username} has joined the chat`)
+
   })
 
   socket.on('send_message', (data) => {
@@ -108,10 +103,6 @@ io.on('connection', (socket) => {
     }
   })
 })
-
-// server.listen(3000, () => {
-//   console.log("SERVER IS RUNNING");
-// });
 
 server.listen(port)
 server.on('error', onError)
