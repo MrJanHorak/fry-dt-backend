@@ -107,6 +107,8 @@ function login(req, res) {
  * @param {Object} res - The response object.
  */
 function changePassword(req, res) {
+  console.log(req.body)
+  console.log(req.user)
   User.findById(req.user._id).then((user) => {
     if (!user) return res.status(401).json({ err: 'User not found' });
     user.comparePassword(req.body.pw, (err, isMatch) => {
