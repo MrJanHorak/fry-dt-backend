@@ -1,6 +1,6 @@
-import mongoose from 'mongoose';
-import bcrypt from 'bcrypt';
-const SALT_ROUNDS = 6;
+import mongoose from 'mongoose'
+import bcrypt from 'bcrypt'
+const SALT_ROUNDS = 6
 
 /**
  * User Schema
@@ -21,40 +21,51 @@ const userSchema = new mongoose.Schema(
     profile: { type: mongoose.Schema.Types.ObjectId, ref: 'Profile' },
     role: {
       type: String,
-      required: true,
+      required: true
     },
+    isPasswordUpdate: {
+      type: Boolean,
+      default: false
+    }
   },
   {
-    timestamps: true,
+    timestamps: true
   }
-);
+)
 
 userSchema.set('toJSON', {
   transform: function (doc, ret) {
-    delete ret.password;
-    return ret;
-  },
-});
+    delete ret.password
+    return ret
+  }
+})
 
 userSchema.pre('save', function (next) {
-  const user = this;
-  if (!user.isModified('password') || user.role === 'student') return next();
+  const user = this
+
+  if (
+    !user.isModified('password') ||
+    (user.role === 'student' && !user.isPasswordUpdate)
+  )
+    return next()
+
   bcrypt
     .hash(user.password, SALT_ROUNDS)
     .then((hash) => {
-      user.password = hash;
-      next();
+      user.password = hash
+      user.isPasswordUpdate = false
+      next()
     })
     .catch((err) => {
-      console.log(err);
-      next(err);
-    });
-});
+      console.log(err)
+      next(err)
+    })
+})
 
 userSchema.methods.comparePassword = function (tryPassword, cb) {
-  bcrypt.compare(tryPassword, this.password, cb);
-};
+  bcrypt.compare(tryPassword, this.password, cb)
+}
 
-const User = mongoose.model('User', userSchema);
+const User = mongoose.model('User', userSchema)
 
-export { User };
+export { User }
