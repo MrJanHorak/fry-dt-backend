@@ -7,6 +7,7 @@ import { Server } from 'socket.io'
 import { leaveRoom } from '../utils/leave-room.js'
 import { handleChatEvents } from './chatHandlers.js'
 import { handleStatusEvents } from './statusHandlers.js'
+import { handleTestingEvents } from './testingHandlers.js'
 
 export function initializeSocketServer(server) {
   const io = new Server(server, {
@@ -34,6 +35,9 @@ export function initializeSocketServer(server) {
 
     // Initialize status handlers
     const statusHandlers = handleStatusEvents(socket, io, allUsers)
+
+    // Initialize testing handlers
+    const testingHandlers = handleTestingEvents(socket, io, allUsers)
 
     // Handle user disconnection
     socket.on('disconnect', () => {
