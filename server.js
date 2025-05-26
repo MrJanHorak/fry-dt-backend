@@ -7,6 +7,16 @@ import cors from 'cors'
 // import routes
 import { router as authRouter } from './routes/auth.js'
 import { router as profilesRouter } from './routes/profiles.js'
+import { router as performanceRouter } from './routes/performance.js'
+import { router as databaseRouter } from './routes/database.js'
+import { router as uxRouter } from './routes/ux.js'
+
+// import middleware
+import { errorHandler, notFoundHandler } from './middleware/errorHandler.js'
+import {
+  performanceMiddleware,
+  errorTrackingMiddleware
+} from './middleware/performanceMonitor.js'
 
 // connect to MondgoDB with mongoose
 import('./config/database.js')
@@ -14,21 +24,50 @@ import('./config/database.js')
 // create the express app
 const app = express()
 
-app.use(cors())
+// Configure CORS
+app.use(
+  cors({
+    origin: [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://localhost:3002',
+      'http://localhost:3003',
+      process.env.CLIENT_URL
+    ].filter(Boolean),
+    credentials: true
+  })
+)
+
 app.use(logger('dev'))
-app.use(express.json())
+app.use(express.json({ limit: '10mb' }))
+app.use(express.urlencoded({ extended: true, limit: '10mb' }))
+
+// Performance monitoring middleware
+app.use(performanceMiddleware)
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
+  })
+})
 
 // routes
 app.use('/api/auth', authRouter)
 app.use('/api/profiles', profilesRouter)
+app.use('/api/performance', performanceRouter)
+app.use('/api/database', databaseRouter)
+app.use('/api/ux', uxRouter)
 
-// catch 404
-app.use(function (req, res, next) {
-  res.status(404).json({ err: 'Not found!' })
-})
+// Error tracking middleware (before error handlers)
+app.use(errorTrackingMiddleware)
 
-app.use(function (err, req, res, next) {
-  res.status(err.status || 500).json({ err: err.message })
-})
+// 404 handler
+app.use(notFoundHandler)
+
+// Global error handler
+app.use(errorHandler)
 
 export { app }
