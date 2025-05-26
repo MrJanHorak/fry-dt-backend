@@ -3,7 +3,14 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "node ./bin/www.js"
+    "start": "node ./bin/www.js",
+    "dev": "nodemon ./bin/www.js",
+    "test": "node ../e2e-monitoring-test.js",
+    "test:monitoring": "node ../e2e-monitoring-test.js",
+    "security:audit": "node ../security-audit.js",
+    "build:optimize": "node ../build-optimizer.js",
+    "monitoring:start": "PERFORMANCE_MONITORING_ENABLED=true npm start",
+    "production": "NODE_ENV=production npm start"
   },
   "author": "Jan Horak",
   "license": "ISC",
@@ -16,6 +23,10 @@
     "jsonwebtoken": "^9.0.0",
     "mongoose": "^6.8.1",
     "morgan": "^1.10.0",
-    "socket.io": "^4.5.4"
+    "socket.io": "^4.5.4",
+    "node-fetch": "^3.3.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.20"
   }
 }

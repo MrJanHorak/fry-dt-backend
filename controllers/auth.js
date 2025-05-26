@@ -9,31 +9,40 @@ import mongoose from 'mongoose'
  * @param {Object} req - The request object.
  * @param {Object} res - The response object.
  */
-function signup(req, res) {
-  Profile.findOne({ email: req.body.email })
-    .then((profile) => {
-      if (profile) {
-        throw new Error('Account already exists')
-      } else if (!process.env.SECRET) {
-        throw new Error('no SECRET in .env file')
-      } else {
-        Profile.create(req.body).then((newProfile) => {
-          req.body.profile = newProfile._id
-          User.create(req.body)
-            .then((user) => {
-              const token = createJWT(user)
-              res.status(200).json({ token })
-            })
-            .catch((err) => {
-              Profile.findByIdAndDelete(req.body.profile)
-              res.status(500).json({ err: err.errmsg })
-            })
-        })
-      }
-    })
-    .catch((err) => {
-      res.status(500).json({ err: err.message })
-    })
+async function signup(req, res) {
+  try {
+    // Input validation
+    if (!req.body.email || !req.body.password || !req.body.name) {
+      return res.status(400).json({ err: 'Missing required fields' })
+    }
+
+    if (!process.env.SECRET) {
+      return res.status(500).json({ err: 'Server configuration error' })
+    }
+
+    // Check if profile already exists
+    const existingProfile = await Profile.findOne({ email: req.body.email })
+    if (existingProfile) {
+      return res.status(409).json({ err: 'Account already exists' })
+    }
+
+    // Create profile and user atomically
+    const newProfile = await Profile.create(req.body)
+
+    try {
+      req.body.profile = newProfile._id
+      const user = await User.create(req.body)
+      const token = createJWT(user)
+      res.status(201).json({ token })
+    } catch (userErr) {
+      // Cleanup profile if user creation fails
+      await Profile.findByIdAndDelete(newProfile._id)
+      throw userErr
+    }
+  } catch (err) {
+    console.error('Signup error:', err)
+    res.status(500).json({ err: err.message || 'Internal server error' })
+  }
 }
 
 /**
@@ -42,96 +51,125 @@ function signup(req, res) {
  * @param {Object} req - The request object.
  * @param {Object} res - The response object.
  */
-function addStudent(req, res) {
-  Profile.findOne({ name: req.body.name })
-    .then((profile) => {
-      if (profile) {
-        throw new Error('Account already exists')
-      } else if (!process.env.SECRET) {
-        throw new Error('no SECRET in .env file')
-      } else {
-        User.findOne({ email: req.body.email })
-          .then((user) => {
-            req.body.password = user.password
-            req.body.email = user.email
-          })
-          .then(
-            Profile.create(req.body).then((newProfile) => {
-              req.body.profile = newProfile._id
-              User.create(req.body)
-                .then((newUser) => {
-                  const token = createJWT(newUser)
-                  res.status(200).json({ token })
-                })
-                .then(
-                  Profile.findOne({ email: req.body.email }).then(
-                    (parentProfile) => {
-                      parentProfile.students.push(newProfile._id),
-                        parentProfile.save()
-                    }
-                  )
-                )
-                .catch((err) => {
-                  Profile.findByIdAndDelete(req.body.profile)
-                  res.status(500).json({ err: err.message })
-                })
-            })
-          )
+async function addStudent(req, res) {
+  try {
+    // Input validation
+    if (!req.body.name || !req.body.email) {
+      return res.status(400).json({ err: 'Missing required fields' })
+    }
+
+    if (!process.env.SECRET) {
+      return res.status(500).json({ err: 'Server configuration error' })
+    }
+
+    // Check if student profile already exists
+    const existingProfile = await Profile.findOne({ name: req.body.name })
+    if (existingProfile) {
+      return res.status(409).json({ err: 'Student account already exists' })
+    }
+
+    // Find parent user to get credentials
+    const parentUser = await User.findOne({ email: req.body.email })
+    if (!parentUser) {
+      return res.status(404).json({ err: 'Parent user not found' })
+    }
+
+    req.body.password = parentUser.password
+    req.body.email = parentUser.email
+
+    // Create student profile
+    const newStudentProfile = await Profile.create(req.body)
+
+    try {
+      // Create student user
+      req.body.profile = newStudentProfile._id
+      const newUser = await User.create(req.body)
+
+      // Add student to parent's profile
+      const parentProfile = await Profile.findOne({ email: req.body.email })
+      if (parentProfile) {
+        parentProfile.students.push(newStudentProfile._id)
+        await parentProfile.save()
       }
-    })
-    .catch((err) => {
-      res.status(500).json({ err: err.message })
-    })
+
+      const token = createJWT(newUser)
+      res.status(201).json({ token })
+    } catch (userErr) {
+      // Cleanup student profile if user creation fails
+      await Profile.findByIdAndDelete(newStudentProfile._id)
+      throw userErr
+    }
+  } catch (err) {
+    console.error('Add student error:', err)
+    res.status(500).json({ err: err.message || 'Internal server error' })
+  }
 }
 
-function login(req, res) {
-  User.findOne({ name: req.body.name })
-    .then((user) => {
-      if (!user) return res.status(401).json({ err: 'User not found' })
-      user.comparePassword(req.body.pw, (err, isMatch) => {
-        if (isMatch) {
-          const token = createJWT(user)
-          res.json({ token })
-        } else {
-          res.status(401).json({ err: 'Incorrect password' })
-        }
+async function login(req, res) {
+  try {
+    // Input validation
+    if (!req.body.name || !req.body.pw) {
+      return res.status(400).json({ err: 'Missing username or password' })
+    }
+
+    const user = await User.findOne({ name: req.body.name })
+    if (!user) {
+      return res.status(401).json({ err: 'Invalid credentials' })
+    }
+
+    // Use promisified comparePassword
+    const isMatch = await new Promise((resolve, reject) => {
+      user.comparePassword(req.body.pw, (err, match) => {
+        if (err) reject(err)
+        else resolve(match)
       })
     })
-    .catch((err) => {
-      res.status(500).json(err)
-    })
+
+    if (isMatch) {
+      const token = createJWT(user)
+      res.json({ token })
+    } else {
+      res.status(401).json({ err: 'Invalid credentials' })
+    }
+  } catch (err) {
+    console.error('Login error:', err)
+    res.status(500).json({ err: 'Internal server error' })
+  }
 }
 
-function changePassword(req, res) {
-  let userId
+async function changePassword(req, res) {
   try {
-    userId = mongoose.Types.ObjectId(req.body.student)
+    // Input validation
+    if (!req.body.student || !req.body.newPw) {
+      return res.status(400).json({ err: 'Missing required fields' })
+    }
+
+    if (req.user.role !== 'teacher') {
+      return res.status(403).json({ err: 'Unauthorized' })
+    }
+
+    let userId
+    try {
+      userId = mongoose.Types.ObjectId(req.body.student)
+    } catch (err) {
+      console.error('Invalid student ID:', err)
+      return res.status(400).json({ err: 'Invalid student ID' })
+    }
+
+    const user = await User.findOne({ profile: userId })
+    if (!user) {
+      return res.status(404).json({ err: 'User not found' })
+    }
+
+    user.password = req.body.newPw
+    user.isPasswordUpdate = true
+    await user.save()
+
+    res.status(200).json({ msg: 'Password updated successfully' })
   } catch (err) {
-    console.log('Invalid student ID:', err)
-    return res.status(400).json({ err: 'Invalid student ID' })
+    console.error('Change password error:', err)
+    res.status(500).json({ err: 'Error updating password' })
   }
-  if (req.user.role !== 'teacher') {
-    return res.status(403).json({ err: 'Unauthorized' })
-  }
-  User.findOne({ profile: userId })
-    .then((user) => {
-      if (!user) return res.status(401).json({ err: 'User not found' })
-      user.password = req.body.newPw
-      user.isPasswordUpdate = true
-      user
-        .save()
-        .then(() => {
-          res.status(200).json({ msg: 'Password updated' })
-        })
-        .catch((err) => {
-          console.log('Error saving user:', err)
-          res.status(500).json({ err: 'Error updating password' })
-        })
-    })
-    .catch((err) => {
-      console.log('Error finding user:', err)
-      res.status(500).json({ err: 'Error finding user' })
-    })
 }
 
 /* --== Helper Functions ==-- */
