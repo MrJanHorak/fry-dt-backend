@@ -77,13 +77,25 @@ async function addStudent(req, res) {
     req.body.password = parentUser.password
     req.body.email = parentUser.email
 
+    // Set default values for required Profile fields
+    const studentProfileData = {
+      ...req.body,
+      role: req.body.role || 'student',
+      grade: req.body.grade || 1,
+      avatar: req.body.avatar || '😊'
+    }
+
     // Create student profile
-    const newStudentProfile = await Profile.create(req.body)
+    const newStudentProfile = await Profile.create(studentProfileData)
 
     try {
-      // Create student user
-      req.body.profile = newStudentProfile._id
-      const newUser = await User.create(req.body)
+      // Create student user with required fields
+      const studentUserData = {
+        ...req.body,
+        profile: newStudentProfile._id,
+        role: req.body.role || 'student'
+      }
+      const newUser = await User.create(studentUserData)
 
       // Add student to parent's profile
       const parentProfile = await Profile.findOne({ email: req.body.email })

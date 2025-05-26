@@ -27,7 +27,13 @@ const app = express()
 // Configure CORS
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:3000',
+    origin: [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://localhost:3002',
+      'http://localhost:3003',
+      process.env.CLIENT_URL
+    ].filter(Boolean),
     credentials: true
   })
 )

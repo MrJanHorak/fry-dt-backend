@@ -11,8 +11,15 @@ import { handleStatusEvents } from './statusHandlers.js'
 export function initializeSocketServer(server) {
   const io = new Server(server, {
     cors: {
-      origin: process.env.CLIENT_URL || 'http://localhost:3000',
-      methods: ['GET', 'POST']
+      origin: [
+        'http://localhost:3000',
+        'http://localhost:3001',
+        'http://localhost:3002',
+        'http://localhost:3003',
+        process.env.CLIENT_URL
+      ].filter(Boolean),
+      methods: ['GET', 'POST'],
+      credentials: true
     }
   })
 
