@@ -21,8 +21,8 @@ export function validateSignup(req, res, next) {
     errors.push('Name is required and must be a non-empty string')
   }
 
-  if (role && !['teacher', 'student'].includes(role)) {
-    errors.push('Role must be either "teacher" or "student"')
+  if (role && !['teacher', 'student', 'parent'].includes(role)) {
+    errors.push('Role must be either "teacher", "student", or "parent"')
   }
 
   if (errors.length > 0) {
@@ -249,7 +249,7 @@ export function validateAssessment(req, res, next) {
 }
 
 export function validateTestSession(req, res, next) {
-  const { sessionType, wordsUsed, sessionSettings, results } = req.body
+  const { sessionType, testType, wordsUsed, sessionSettings, results } = req.body
   const errors = []
 
   // Required fields
@@ -260,6 +260,15 @@ export function validateTestSession(req, res, next) {
   ) {
     errors.push(
       'Session type must be one of: individual, group, practice, assessment'
+    )
+  }
+
+  if (
+    testType !== undefined &&
+    !['recognition', 'pronunciation', 'spelling', 'reading'].includes(testType)
+  ) {
+    errors.push(
+      'Test type must be one of: recognition, pronunciation, spelling, reading'
     )
   }
 

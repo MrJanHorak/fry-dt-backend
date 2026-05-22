@@ -1,5 +1,20 @@
 import { Profile } from '../models/profile.js'
 
+const parseFilterDate = (value, endOfDay = false) => {
+  if (!value) return null
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return null
+  }
+
+  if (endOfDay) {
+    date.setHours(23, 59, 59, 999)
+  }
+
+  return date
+}
+
 async function index(req, res) {
   try {
     const profiles = await Profile.find({})
@@ -245,6 +260,23 @@ async function getAssessments(req, res) {
       )
     }
 
+    const startDate = parseFilterDate(req.query.startDate)
+    const endDate = parseFilterDate(req.query.endDate, true)
+
+    if (startDate) {
+      assessments = assessments.filter((assessment) => {
+        const assessmentDate = parseFilterDate(assessment.date)
+        return assessmentDate && assessmentDate >= startDate
+      })
+    }
+
+    if (endDate) {
+      assessments = assessments.filter((assessment) => {
+        const assessmentDate = parseFilterDate(assessment.date)
+        return assessmentDate && assessmentDate <= endDate
+      })
+    }
+
     // Sort by date (most recent first)
     assessments.sort((a, b) => new Date(b.date) - new Date(a.date))
 
@@ -348,8 +380,31 @@ async function getTestSessions(req, res) {
       )
     }
 
+    if (req.query.sessionType) {
+      testSessions = testSessions.filter(
+        (s) => s.sessionType === req.query.sessionType
+      )
+    }
+
     if (req.query.status) {
       testSessions = testSessions.filter((s) => s.status === req.query.status)
+    }
+
+    const startDate = parseFilterDate(req.query.startDate)
+    const endDate = parseFilterDate(req.query.endDate, true)
+
+    if (startDate) {
+      testSessions = testSessions.filter((session) => {
+        const sessionStart = parseFilterDate(session.startTime)
+        return sessionStart && sessionStart >= startDate
+      })
+    }
+
+    if (endDate) {
+      testSessions = testSessions.filter((session) => {
+        const sessionStart = parseFilterDate(session.startTime)
+        return sessionStart && sessionStart <= endDate
+      })
     }
 
     // Sort by start time (most recent first)

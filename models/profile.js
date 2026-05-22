@@ -46,10 +46,15 @@ const assessment = new Schema({
 
 // Test session schema
 const testSession = new Schema({
+  sessionId: { type: String },
   sessionType: {
     type: String,
     enum: ['individual', 'group', 'practice', 'assessment'],
     required: true
+  },
+  testType: {
+    type: String,
+    enum: ['recognition', 'pronunciation', 'spelling', 'reading']
   },
   wordsUsed: [{ type: String }], // Words used in this session
   sessionSettings: {

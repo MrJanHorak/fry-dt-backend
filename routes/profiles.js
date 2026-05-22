@@ -85,7 +85,6 @@ router.put(
   '/:id/testSessions/:sessionId',
   checkAuth,
   validateObjectId('id'),
-  validateObjectId('sessionId'),
   validateTestSession,
   asyncHandler(profilesCtrl.updateTestSession)
 )

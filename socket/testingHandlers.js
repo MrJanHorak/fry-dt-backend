@@ -3,9 +3,272 @@
  * Handles all real-time testing-related socket events for teacher-student testing
  */
 
+import { Profile } from '../models/profile.js'
+
+const activeTestSessions = new Map()
+
+const getProfileId = (userLike) => {
+  if (!userLike) return null
+
+  if (typeof userLike === 'string') {
+    return userLike
+  }
+
+  return userLike.profile || userLike._id || null
+}
+
+const createParticipantState = () => ({
+  responsesByWord: new Map()
+})
+
+const getOrCreateParticipantState = (session, studentProfileId) => {
+  if (!session.participants.has(studentProfileId)) {
+    session.participants.set(studentProfileId, createParticipantState())
+  }
+
+  return session.participants.get(studentProfileId)
+}
+
+const normalizeScore = (score, recognized) => {
+  if (typeof score === 'number') {
+    if (score >= 0 && score <= 1) {
+      return Math.round(score * 100)
+    }
+
+    return Math.max(0, Math.min(100, Math.round(score)))
+  }
+
+  return recognized ? 100 : 0
+}
+
+const buildSessionRecord = ({
+  sessionId,
+  sessionType,
+  testType,
+  wordsToTest,
+  teacherProfileId,
+  studentProfileId,
+  startTime,
+  fryLevel,
+  status = 'active',
+  endTime,
+  results
+}) => ({
+  sessionId,
+  sessionType,
+  testType,
+  wordsUsed: [...wordsToTest],
+  sessionSettings: {
+    wordCount: wordsToTest.length,
+    testTypes: [testType]
+  },
+  results:
+    results || {
+      totalWords: wordsToTest.length,
+      correctWords: 0,
+      averageResponseTime: 0,
+      averageConfidence: 0
+    },
+  teacherId: teacherProfileId,
+  studentId: studentProfileId,
+  startTime,
+  endTime,
+  status,
+  teacherNotes: 'Teacher-led live session',
+  fryLevel
+})
+
+const createActiveStudentSessionRecord = async (session, studentProfileId) => {
+  if (!studentProfileId) return
+
+  const sessionType =
+    session.participantProfileIds.size > 1 ? 'group' : 'individual'
+
+  await Profile.findByIdAndUpdate(studentProfileId, {
+    $push: {
+      testSessions: buildSessionRecord({
+        sessionId: session.sessionId,
+        sessionType,
+        testType: session.testType,
+        wordsToTest: session.wordsToTest,
+        teacherProfileId: session.teacherProfileId,
+        studentProfileId,
+        startTime: session.startTime,
+        fryLevel: session.fryLevel
+      })
+    }
+  })
+
+  session.persistedParticipants.add(studentProfileId)
+}
+
+const buildAssessmentRecord = (
+  session,
+  responseData,
+  teacherNotes,
+  recognized,
+  score
+) => ({
+  testType: session.testType,
+  words: [responseData.word],
+  responses: [
+    {
+      word: responseData.word,
+      correct: Boolean(recognized),
+      timeSpent: responseData.responseTime || 0,
+      attempts: 1
+    }
+  ],
+  score: normalizeScore(score, Boolean(recognized)),
+  duration: responseData.responseTime || 0,
+  teacherNotes,
+  assessmentData: {
+    sessionType: 'teacher-led-live',
+    response: responseData.response || null,
+    confidence: responseData.confidence || 0,
+    submittedRecognized: Boolean(responseData.recognized),
+    teacherRecognized: Boolean(recognized),
+    studentName: responseData.studentName || null
+  },
+  difficulty: 'medium',
+  date: new Date(),
+  sessionId: session.sessionId
+})
+
+const upsertStudentAssessment = async (
+  studentProfileId,
+  session,
+  responseData,
+  teacherNotes,
+  recognized,
+  score
+) => {
+  if (!studentProfileId || !responseData) return false
+
+  const profile = await Profile.findById(studentProfileId)
+  if (!profile) return false
+
+  const assessmentRecord = buildAssessmentRecord(
+    session,
+    responseData,
+    teacherNotes,
+    recognized,
+    score
+  )
+
+  const existingAssessment = profile.assessments.find(
+    (assessment) =>
+      assessment.sessionId === session.sessionId &&
+      Array.isArray(assessment.words) &&
+      assessment.words.length === 1 &&
+      assessment.words[0] === responseData.word
+  )
+
+  if (existingAssessment) {
+    existingAssessment.testType = assessmentRecord.testType
+    existingAssessment.words = assessmentRecord.words
+    existingAssessment.responses = assessmentRecord.responses
+    existingAssessment.score = assessmentRecord.score
+    existingAssessment.duration = assessmentRecord.duration
+    existingAssessment.teacherNotes = assessmentRecord.teacherNotes
+    existingAssessment.assessmentData = assessmentRecord.assessmentData
+    existingAssessment.difficulty = assessmentRecord.difficulty
+    existingAssessment.date = assessmentRecord.date
+  } else {
+    profile.assessments.push(assessmentRecord)
+  }
+
+  await profile.save()
+  return true
+}
+
+const buildParticipantResults = (session, studentProfileId) => {
+  const participantState = session.participants.get(studentProfileId)
+  if (!participantState) {
+    return {
+      totalWords: session.wordsToTest.length,
+      correctWords: 0,
+      averageResponseTime: 0,
+      averageConfidence: 0
+    }
+  }
+
+  const responses = Array.from(participantState.responsesByWord.values())
+  const completedResponses = responses.filter((response) => response.word)
+  const correctWords = completedResponses.filter((response) =>
+    typeof response.teacherRecognized === 'boolean'
+      ? response.teacherRecognized
+      : response.recognized
+  ).length
+
+  const responseTimes = completedResponses
+    .map((response) => response.responseTime)
+    .filter((value) => typeof value === 'number' && value >= 0)
+
+  const confidences = completedResponses
+    .map((response) => response.confidence)
+    .filter((value) => typeof value === 'number' && value >= 0)
+
+  return {
+    totalWords: session.wordsToTest.length,
+    correctWords,
+    averageResponseTime: responseTimes.length
+      ? responseTimes.reduce((sum, value) => sum + value, 0) /
+        responseTimes.length
+      : 0,
+    averageConfidence: confidences.length
+      ? confidences.reduce((sum, value) => sum + value, 0) / confidences.length
+      : 0
+  }
+}
+
+const finalizeStudentSession = async (session, studentProfileId, endTime) => {
+  if (!studentProfileId) return
+
+  const results = buildParticipantResults(session, studentProfileId)
+
+  const updatedProfile = await Profile.findOneAndUpdate(
+    {
+      _id: studentProfileId,
+      'testSessions.sessionId': session.sessionId
+    },
+    {
+      $set: {
+        'testSessions.$.endTime': endTime,
+        'testSessions.$.status': 'completed',
+        'testSessions.$.results': results
+      }
+    },
+    { new: true }
+  )
+
+  if (!updatedProfile) {
+    const sessionType =
+      session.participantProfileIds.size > 1 ? 'group' : 'individual'
+
+    await Profile.findByIdAndUpdate(studentProfileId, {
+      $push: {
+        testSessions: buildSessionRecord({
+          sessionId: session.sessionId,
+          sessionType,
+          testType: session.testType,
+          wordsToTest: session.wordsToTest,
+          teacherProfileId: session.teacherProfileId,
+          studentProfileId,
+          startTime: session.startTime,
+          fryLevel: session.fryLevel,
+          status: 'completed',
+          endTime,
+          results
+        })
+      }
+    })
+  }
+}
+
 export function handleTestingEvents(socket, io, allUsers) {
   // Teacher starts a new test session
-  socket.on('start_test_session', (data) => {
+  socket.on('start_test_session', async (data) => {
     try {
       const { sessionId, teacherId, room, testType, wordsToTest, fryLevel } =
         data
@@ -22,10 +285,47 @@ export function handleTestingEvents(socket, io, allUsers) {
         `Teacher ${teacherId} starting test session ${sessionId} in room ${room}`
       )
 
+      const teacher = allUsers.find((user) => user.id === socket.id)
+      const teacherProfileId = getProfileId(teacher?.user) || teacherId
+      const participantProfileIds = [
+        ...new Set(
+          allUsers
+            .filter((user) => user.room === room && user.user?.role === 'student')
+            .map((user) => getProfileId(user.user))
+            .filter(Boolean)
+        )
+      ]
+
+      const activeSession = {
+        sessionId,
+        room,
+        teacherProfileId,
+        testType,
+        fryLevel,
+        wordsToTest: [...wordsToTest],
+        startTime: new Date(),
+        participantProfileIds: new Set(participantProfileIds),
+        persistedParticipants: new Set(),
+        participants: new Map(
+          participantProfileIds.map((profileId) => [
+            profileId,
+            createParticipantState()
+          ])
+        )
+      }
+
+      await Promise.all(
+        participantProfileIds.map((profileId) =>
+          createActiveStudentSessionRecord(activeSession, profileId)
+        )
+      )
+
+      activeTestSessions.set(sessionId, activeSession)
+
       // Broadcast test session start to all students in the room
       socket.to(room).emit('test_session_started', {
         sessionId,
-        teacherId,
+        teacherId: teacherProfileId,
         testType,
         fryLevel,
         wordsCount: wordsToTest.length,
@@ -36,7 +336,8 @@ export function handleTestingEvents(socket, io, allUsers) {
       socket.emit('test_session_confirmed', {
         sessionId,
         message: 'Test session started successfully',
-        studentsNotified: true
+        studentsNotified: true,
+        persistedStudents: participantProfileIds.length
       })
     } catch (error) {
       console.error('Error in start_test_session:', error)
@@ -82,7 +383,7 @@ export function handleTestingEvents(socket, io, allUsers) {
   })
 
   // Student submits response to a test word
-  socket.on('submit_test_response', (data) => {
+  socket.on('submit_test_response', async (data) => {
     try {
       const {
         sessionId,
@@ -113,11 +414,44 @@ export function handleTestingEvents(socket, io, allUsers) {
         return
       }
 
+      const studentProfileId = studentId || getProfileId(student.user)
+      const activeSession = activeTestSessions.get(sessionId)
+
+      if (activeSession && studentProfileId) {
+        activeSession.participantProfileIds.add(studentProfileId)
+
+        if (!activeSession.persistedParticipants.has(studentProfileId)) {
+          await createActiveStudentSessionRecord(activeSession, studentProfileId)
+        }
+
+        const participantState = getOrCreateParticipantState(
+          activeSession,
+          studentProfileId
+        )
+        const existingResponse = participantState.responsesByWord.get(word) || {
+          word,
+          studentId: studentProfileId
+        }
+
+        participantState.responsesByWord.set(word, {
+          ...existingResponse,
+          word,
+          studentId: studentProfileId,
+          studentName,
+          response: response || null,
+          responseTime: responseTime || 0,
+          testType,
+          recognized: Boolean(recognized),
+          confidence: typeof confidence === 'number' ? confidence : 0,
+          submittedAt: new Date()
+        })
+      }
+
       // Send response to teacher (and other observers in the room)
       socket.to(student.room).emit('student_test_response', {
         sessionId,
         word,
-        studentId,
+        studentId: studentProfileId,
         studentName,
         response: response || null,
         responseTime,
@@ -140,10 +474,21 @@ export function handleTestingEvents(socket, io, allUsers) {
   })
 
   // Teacher saves assessment notes for a student's response
-  socket.on('save_assessment_note', (data) => {
+  socket.on('save_assessment_note', async (data) => {
     try {
-      const { sessionId, word, studentId, teacherNotes, score, recognized } =
-        data
+      const {
+        sessionId,
+        word,
+        studentId,
+        teacherNotes,
+        score,
+        recognized,
+        testType,
+        response,
+        responseTime,
+        confidence,
+        studentName
+      } = data
 
       // Validate required data
       if (!sessionId || !word || !studentId) {
@@ -164,11 +509,56 @@ export function handleTestingEvents(socket, io, allUsers) {
         return
       }
 
+      const activeSession = activeTestSessions.get(sessionId)
+      const studentProfileId = studentId
+
+      if (activeSession && studentProfileId) {
+        activeSession.participantProfileIds.add(studentProfileId)
+
+        if (!activeSession.persistedParticipants.has(studentProfileId)) {
+          await createActiveStudentSessionRecord(activeSession, studentProfileId)
+        }
+
+        const participantState = getOrCreateParticipantState(
+          activeSession,
+          studentProfileId
+        )
+        const existingResponse = participantState.responsesByWord.get(word) || {
+          word,
+          studentId: studentProfileId,
+          studentName,
+          response: response || null,
+          responseTime: responseTime || 0,
+          testType: testType || activeSession.testType,
+          confidence: confidence || 0,
+          recognized: false
+        }
+
+        const updatedResponse = {
+          ...existingResponse,
+          teacherNotes,
+          teacherRecognized: Boolean(recognized),
+          score: normalizeScore(score, Boolean(recognized)),
+          assessedAt: new Date()
+        }
+
+        participantState.responsesByWord.set(word, updatedResponse)
+
+        await upsertStudentAssessment(
+          studentProfileId,
+          activeSession,
+          updatedResponse,
+          teacherNotes,
+          recognized,
+          score
+        )
+      }
+
       // Broadcast assessment saved to room (for any observers)
       socket.to(teacher.room).emit('assessment_saved', {
         sessionId,
         word,
-        studentId,
+        studentId: studentProfileId,
         teacherNotes,
         score,
         recognized,
@@ -179,7 +569,7 @@ export function handleTestingEvents(socket, io, allUsers) {
       socket.emit('assessment_note_saved', {
         sessionId,
         word,
-        studentId,
+        studentId: studentProfileId,
         savedAt: Date.now()
       })
     } catch (error) {
@@ -189,7 +579,7 @@ export function handleTestingEvents(socket, io, allUsers) {
   })
 
   // Teacher ends the test session
-  socket.on('end_test_session', (data) => {
+  socket.on('end_test_session', async (data) => {
     try {
       const { sessionId, room, completedCount, totalWords } = data
 
@@ -203,10 +593,30 @@ export function handleTestingEvents(socket, io, allUsers) {
 
       console.log(`Ending test session ${sessionId} in room ${room}`)
 
+      const activeSession = activeTestSessions.get(sessionId)
+      const endTime = new Date()
+
+      if (activeSession) {
+        const participantProfileIds = [
+          ...new Set([
+            ...activeSession.participantProfileIds,
+            ...activeSession.persistedParticipants
+          ])
+        ]
+
+        await Promise.all(
+          participantProfileIds.map((studentProfileId) =>
+            finalizeStudentSession(activeSession, studentProfileId, endTime)
+          )
+        )
+
+        activeTestSessions.delete(sessionId)
+      }
+
       // Notify all users in room that session has ended
       socket.to(room).emit('test_session_ended', {
         sessionId,
-        endTime: Date.now(),
+        endTime: endTime.getTime(),
         completedCount: completedCount || 0,
         totalWords: totalWords || 0
       })
