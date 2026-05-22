@@ -416,6 +416,7 @@ export function handleTestingEvents(socket, io, allUsers) {
 
       const studentProfileId = studentId || getProfileId(student.user)
       const activeSession = activeTestSessions.get(sessionId)
+      const deliveryRoom = activeSession?.room || student.room
 
       if (activeSession && studentProfileId) {
         activeSession.participantProfileIds.add(studentProfileId)
@@ -445,10 +446,32 @@ export function handleTestingEvents(socket, io, allUsers) {
           confidence: typeof confidence === 'number' ? confidence : 0,
           submittedAt: new Date()
         })
+
+        const latestResponse = participantState.responsesByWord.get(word)
+
+        await upsertStudentAssessment(
+          studentProfileId,
+          activeSession,
+          latestResponse,
+          existingResponse.teacherNotes || '',
+          typeof existingResponse.teacherRecognized === 'boolean'
+            ? existingResponse.teacherRecognized
+            : Boolean(recognized),
+          typeof existingResponse.score === 'number'
+            ? existingResponse.score
+            : normalizeScore(undefined, Boolean(recognized))
+        )
+      }
+
+      if (!deliveryRoom) {
+        socket.emit('test_error', {
+          message: 'Unable to deliver student response to the teacher'
+        })
+        return
       }
 
       // Send response to teacher (and other observers in the room)
-      socket.to(student.room).emit('student_test_response', {
+      socket.to(deliveryRoom).emit('student_test_response', {
         sessionId,
         word,
         studentId: studentProfileId,

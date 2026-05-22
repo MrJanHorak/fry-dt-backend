@@ -44,6 +44,8 @@ export function initializeSocketServer(server) {
       console.log(`User disconnected: ${socket.id}`)
 
       try {
+        statusHandlers.removePresence(socket.id)
+
         // Find and remove the user
         const disconnectedUser = chatHandlers.removeUser(socket.id)
 

@@ -10,6 +10,13 @@ export function handleChatEvents(socket, io, allUsers) {
   socket.on('join_room', (data) => {
     try {
       const { username, user, room } = data
+      const existingUser = allUsers.find((roomUser) => roomUser.id === socket.id)
+      const previousRoom = existingUser?.room || null
+
+      if (previousRoom && previousRoom !== room) {
+        socket.leave(previousRoom)
+      }
+
       socket.join(room)
 
       let __createdtime__ = Date.now()
@@ -23,10 +30,21 @@ export function handleChatEvents(socket, io, allUsers) {
       })
 
       // Save the new user to the room
-      const existingUser = allUsers.find((user) => user.id === socket.id)
       if (!existingUser) {
         const newUser = { username, user, room, id: socket.id }
         allUsers.push(newUser)
+      } else {
+        existingUser.username = username
+        existingUser.user = user
+        existingUser.room = room
+        existingUser.lastActivity = Date.now()
+      }
+
+      if (previousRoom && previousRoom !== room) {
+        io.in(previousRoom).emit(
+          'chatroom_users',
+          allUsers.filter((roomUser) => roomUser.room === previousRoom)
+        )
       }
 
       // Send list of users in room to client
@@ -64,6 +82,25 @@ export function handleChatEvents(socket, io, allUsers) {
     } catch (error) {
       console.error('Error in send_message:', error)
       socket.emit('error', { message: 'Failed to send message' })
+    }
+  })
+
+  socket.on('request_room_users', (data) => {
+    try {
+      const { room } = data || {}
+
+      if (!room) {
+        socket.emit('error', { message: 'Room is required' })
+        return
+      }
+
+      socket.emit(
+        'chatroom_users',
+        allUsers.filter((user) => user.room === room)
+      )
+    } catch (error) {
+      console.error('Error in request_room_users:', error)
+      socket.emit('error', { message: 'Failed to load room users' })
     }
   })
 
