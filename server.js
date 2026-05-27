@@ -18,8 +18,10 @@ import {
   errorTrackingMiddleware
 } from './middleware/performanceMonitor.js'
 
-// connect to MondgoDB with mongoose
-import('./config/database.js')
+// connect to MongoDB unless a test run explicitly disables it
+if (process.env.SKIP_DB_CONNECTION !== 'true') {
+  import('./config/database.js')
+}
 
 // create the express app
 const app = express()

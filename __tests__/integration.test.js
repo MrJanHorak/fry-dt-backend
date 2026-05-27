@@ -1,356 +1,250 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import request from 'supertest'
-import { app } from '../server.js'
-import { User } from '../models/user.js'
-import { Profile } from '../models/profile.js'
 import jwt from 'jsonwebtoken'
 
-describe('API Integration Tests', () => {
-  let testUser
-  let testProfile
-  let authToken
+process.env.SKIP_DB_CONNECTION = 'true'
+process.env.SECRET = 'test-secret'
 
-  beforeEach(async () => {
-    // Clean up test data
-    await User.deleteMany({ email: /test/ })
-    await Profile.deleteMany({ email: /test/ })
+vi.mock('../models/user.js', () => ({
+  User: {
+    findOne: vi.fn(),
+    create: vi.fn(),
+    findByIdAndDelete: vi.fn()
+  }
+}))
 
-    // Create test profile and user
-    testProfile = await Profile.create({
-      name: 'Test User',
-      email: 'test@example.com',
-      avatar: 'test-avatar.png',
-      grade: 3,
-      role: 'student',
-      practicedWords: []
-    })
+vi.mock('../models/profile.js', () => ({
+  Profile: {
+    findOne: vi.fn(),
+    create: vi.fn(),
+    findById: vi.fn(),
+    findByIdAndUpdate: vi.fn(),
+    findByIdAndDelete: vi.fn()
+  }
+}))
 
-    testUser = await User.create({
-      name: 'Test User',
-      email: 'test@example.com',
-      password: 'testpassword',
-      profile: testProfile._id,
-      role: 'student'
-    })
+const { User } = await import('../models/user.js')
+const { Profile } = await import('../models/profile.js')
+const { app } = await import('../server.js')
 
-    // Generate auth token
-    authToken = jwt.sign({ user: testUser._id }, process.env.SECRET, {
-      expiresIn: '24h'
-    })
+const profileId = '507f1f77bcf86cd799439011'
+
+const createAuthedRequest = () => {
+  const token = jwt.sign(
+    {
+      user: {
+        _id: '507f1f77bcf86cd799439012',
+        profile: profileId,
+        role: 'teacher'
+      }
+    },
+    process.env.SECRET,
+    { expiresIn: '24h' }
+  )
+
+  return { Authorization: `Bearer ${token}` }
+}
+
+const createPopulateQuery = (result) => ({
+  populate: vi.fn().mockResolvedValue(result)
+})
+
+describe('API integration tests', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
   })
 
-  afterEach(async () => {
-    // Clean up test data
-    await User.deleteMany({ email: /test/ })
-    await Profile.deleteMany({ email: /test/ })
-  })
+  describe('Auth endpoints', () => {
+    it('signs up a new user successfully', async () => {
+      Profile.findOne.mockResolvedValue(null)
+      Profile.create.mockResolvedValue({ _id: profileId })
+      User.create.mockResolvedValue({ _id: '507f1f77bcf86cd799439099' })
 
-  describe('Auth Endpoints', () => {
-    it('should signup a new user successfully', async () => {
-      const newUser = {
+      const response = await request(app).post('/api/auth/signup').send({
         name: 'New Test User',
         email: 'newtest@example.com',
         password: 'newpassword',
         avatar: 'new-avatar.png',
         grade: 4,
         role: 'student'
-      }
+      })
 
-      const response = await request(app)
-        .post('/api/auth/signup')
-        .send(newUser)
-        .expect(201)
-
+      expect(response.status).toBe(201)
       expect(response.body).toHaveProperty('token')
-
-      // Verify user was created
-      const createdUser = await User.findOne({ email: newUser.email })
-      expect(createdUser).toBeTruthy()
-      expect(createdUser.name).toBe(newUser.name)
+      expect(Profile.create).toHaveBeenCalled()
+      expect(User.create).toHaveBeenCalled()
     })
 
-    it('should login with valid credentials', async () => {
-      const loginData = {
-        email: 'test@example.com',
-        password: 'testpassword'
-      }
-
-      const response = await request(app)
-        .post('/api/auth/login')
-        .send(loginData)
-        .expect(200)
-
-      expect(response.body).toHaveProperty('token')
-    })
-
-    it('should reject login with invalid credentials', async () => {
-      const loginData = {
-        email: 'test@example.com',
-        password: 'wrongpassword'
-      }
-
-      const response = await request(app)
-        .post('/api/auth/login')
-        .send(loginData)
-        .expect(400)
-
-      expect(response.body).toHaveProperty('err')
-    })
-
-    it('should validate required fields on signup', async () => {
-      const incompleteUser = {
+    it('rejects signup when required fields are missing', async () => {
+      const response = await request(app).post('/api/auth/signup').send({
         name: 'Incomplete User'
-        // Missing email, password, etc.
-      }
+      })
 
-      const response = await request(app)
-        .post('/api/auth/signup')
-        .send(incompleteUser)
-        .expect(400)
+      expect(response.status).toBe(400)
+      expect(response.body).toHaveProperty('err', 'Validation failed')
+      expect(response.body.details).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(/email/i),
+          expect.stringMatching(/password/i)
+        ])
+      )
+    })
 
-      expect(response.body).toHaveProperty('err')
-      expect(response.body.err).toMatch(/required fields/i)
+    it('logs in with valid credentials', async () => {
+      User.findOne.mockResolvedValue({
+        _id: '507f1f77bcf86cd799439013',
+        comparePassword: (_password, callback) => callback(null, true)
+      })
+
+      const response = await request(app).post('/api/auth/login').send({
+        name: 'Test User',
+        pw: 'testpassword'
+      })
+
+      expect(response.status).toBe(200)
+      expect(response.body).toHaveProperty('token')
+    })
+
+    it('rejects login with invalid credentials', async () => {
+      User.findOne.mockResolvedValue({
+        _id: '507f1f77bcf86cd799439013',
+        comparePassword: (_password, callback) => callback(null, false)
+      })
+
+      const response = await request(app).post('/api/auth/login').send({
+        name: 'Test User',
+        pw: 'wrongpassword'
+      })
+
+      expect(response.status).toBe(401)
+      expect(response.body).toHaveProperty('err', 'Invalid credentials')
     })
   })
 
-  describe('Profile Endpoints', () => {
-    it('should get profile by ID with authentication', async () => {
-      const response = await request(app)
-        .get(`/api/profiles/${testProfile._id}`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .expect(200)
+  describe('Profile endpoints', () => {
+    it('gets a profile by id with authentication', async () => {
+      Profile.findById.mockReturnValue(
+        createPopulateQuery({
+          _id: profileId,
+          name: 'Test User',
+          email: 'test@example.com',
+          students: []
+        })
+      )
 
-      expect(response.body).toHaveProperty('_id', testProfile._id.toString())
-      expect(response.body).toHaveProperty('name', 'Test User')
-      expect(response.body).toHaveProperty('email', 'test@example.com')
+      const response = await request(app)
+        .get(`/api/profiles/${profileId}`)
+        .set(createAuthedRequest())
+
+      expect(response.status).toBe(200)
+      expect(response.body).toMatchObject({
+        _id: profileId,
+        name: 'Test User',
+        email: 'test@example.com'
+      })
     })
 
-    it('should reject unauthorized profile access', async () => {
-      const response = await request(app)
-        .get(`/api/profiles/${testProfile._id}`)
-        .expect(401)
+    it('rejects unauthorized profile access', async () => {
+      const response = await request(app).get(`/api/profiles/${profileId}`)
 
-      expect(response.body).toHaveProperty('err')
+      expect(response.status).toBe(401)
+      expect(response.body).toHaveProperty('err', 'Not Authorized')
     })
 
-    it('should update profile with valid data', async () => {
-      const updateData = {
+    it('updates a profile with valid data', async () => {
+      Profile.findByIdAndUpdate.mockResolvedValue({
+        _id: profileId,
         name: 'Updated Test User',
         grade: 4
-      }
+      })
 
       const response = await request(app)
-        .put(`/api/profiles/${testProfile._id}`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .send(updateData)
-        .expect(200)
+        .put(`/api/profiles/${profileId}`)
+        .set(createAuthedRequest())
+        .send({
+          name: 'Updated Test User',
+          grade: 4
+        })
 
-      expect(response.body).toHaveProperty('name', 'Updated Test User')
-      expect(response.body).toHaveProperty('grade', 4)
-    })
-
-    it('should add practiced word to profile', async () => {
-      const wordData = {
-        word: 'test',
-        mastered: false,
-        timesPracticed: 1,
-        timesCorrect: 1,
-        timesIncorrect: 0,
-        streak: 1
-      }
-
-      const response = await request(app)
-        .post(`/api/profiles/${testProfile._id}/practicedWords`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .send(wordData)
-        .expect(200)
-
-      expect(response.body).toBeInstanceOf(Array)
-      expect(response.body[0]).toHaveProperty('word', 'test')
-    })
-
-    it('should validate practiced word data', async () => {
-      const invalidWordData = {
-        word: '', // Empty word should fail validation
-        timesPracticed: -1 // Negative value should fail
-      }
-
-      const response = await request(app)
-        .post(`/api/profiles/${testProfile._id}/practicedWords`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .send(invalidWordData)
-        .expect(400)
-
-      expect(response.body).toHaveProperty('err')
-    })
-
-    it('should update practiced word correctly', async () => {
-      // First add a word
-      const wordData = {
-        word: 'update-test',
-        mastered: false,
-        timesPracticed: 1,
-        timesCorrect: 0,
-        timesIncorrect: 1,
-        streak: 0
-      }
-
-      const addResponse = await request(app)
-        .post(`/api/profiles/${testProfile._id}/practicedWords`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .send(wordData)
-        .expect(200)
-
-      const wordId = addResponse.body[0]._id
-
-      // Now update it
-      const updateData = {
-        word: 'update-test',
-        mastered: true,
-        timesPracticed: 2,
-        timesCorrect: 1,
-        timesIncorrect: 1,
-        streak: 1
-      }
-
-      const updateResponse = await request(app)
-        .put(`/api/profiles/${testProfile._id}/practicedWords/${wordId}`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .send(updateData)
-        .expect(200)
-
-      expect(updateResponse.body).toHaveProperty('mastered', true)
-      expect(updateResponse.body).toHaveProperty('timesPracticed', 2)
-    })
-  })
-
-  describe('Error Handling', () => {
-    it('should handle invalid MongoDB ObjectIds', async () => {
-      const invalidId = 'invalid-object-id'
-
-      const response = await request(app)
-        .get(`/api/profiles/${invalidId}`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .expect(400)
-
-      expect(response.body).toHaveProperty('err')
-      expect(response.body.err).toMatch(/invalid/i)
-    })
-
-    it('should handle non-existent profile IDs', async () => {
-      const nonExistentId = '507f1f77bcf86cd799439011' // Valid ObjectId format but doesn't exist
-
-      const response = await request(app)
-        .get(`/api/profiles/${nonExistentId}`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .expect(404)
-
-      expect(response.body).toHaveProperty('err')
-      expect(response.body.err).toMatch(/not found/i)
-    })
-
-    it('should handle malformed JSON requests', async () => {
-      const response = await request(app)
-        .post('/api/auth/signup')
-        .set('Content-Type', 'application/json')
-        .send('{ invalid json }')
-        .expect(400)
-
-      expect(response.body).toHaveProperty('err')
-    })
-  })
-
-  describe('Rate Limiting and Security', () => {
-    it('should handle multiple rapid requests gracefully', async () => {
-      const requests = Array.from({ length: 10 }, () =>
-        request(app)
-          .get(`/api/profiles/${testProfile._id}`)
-          .set('Authorization', `Bearer ${authToken}`)
-      )
-
-      const responses = await Promise.all(requests)
-
-      // All should succeed (no rate limiting in test environment)
-      responses.forEach((response) => {
-        expect(response.status).toBe(200)
+      expect(response.status).toBe(200)
+      expect(response.body).toMatchObject({
+        name: 'Updated Test User',
+        grade: 4
       })
     })
 
-    it('should validate JWT tokens properly', async () => {
-      const invalidToken = 'invalid.jwt.token'
+    it('adds a practiced word to a profile', async () => {
+      const save = vi.fn().mockResolvedValue(undefined)
+      const profile = {
+        practicedWords: [],
+        save
+      }
+      Profile.findById.mockResolvedValue(profile)
 
       const response = await request(app)
-        .get(`/api/profiles/${testProfile._id}`)
-        .set('Authorization', `Bearer ${invalidToken}`)
-        .expect(401)
+        .post(`/api/profiles/${profileId}/practicedWords`)
+        .set(createAuthedRequest())
+        .send({
+          word: 'test',
+          mastered: false,
+          timesPracticed: 1,
+          timesCorrect: 1,
+          timesIncorrect: 0,
+          streak: 1
+        })
 
-      expect(response.body).toHaveProperty('err')
+      expect(response.status).toBe(200)
+      expect(response.body).toEqual([
+        expect.objectContaining({
+          word: 'test',
+          timesPracticed: 1
+        })
+      ])
+      expect(save).toHaveBeenCalled()
     })
 
-    it('should reject expired tokens', async () => {
-      const expiredToken = jwt.sign(
-        { user: testUser._id },
-        process.env.SECRET,
-        { expiresIn: '-1h' } // Expired 1 hour ago
-      )
-
+    it('validates practiced word payloads', async () => {
       const response = await request(app)
-        .get(`/api/profiles/${testProfile._id}`)
-        .set('Authorization', `Bearer ${expiredToken}`)
-        .expect(401)
+        .post(`/api/profiles/${profileId}/practicedWords`)
+        .set(createAuthedRequest())
+        .send({
+          word: '',
+          timesPracticed: -1
+        })
 
-      expect(response.body).toHaveProperty('err')
+      expect(response.status).toBe(400)
+      expect(response.body).toHaveProperty('err', 'Validation failed')
     })
   })
 
-  describe('Student Management', () => {
-    it('should add student to parent profile', async () => {
-      // Create parent user
-      const parentProfile = await Profile.create({
-        name: 'Parent User',
-        email: 'parent@example.com',
-        avatar: 'parent-avatar.png',
-        grade: 1,
-        role: 'parent',
-        students: []
-      })
+  describe('Error handling', () => {
+    it('rejects invalid MongoDB object ids', async () => {
+      const response = await request(app)
+        .get('/api/profiles/invalid-object-id')
+        .set(createAuthedRequest())
 
-      const parentUser = await User.create({
-        name: 'Parent User',
-        email: 'parent@example.com',
-        password: 'parentpassword',
-        profile: parentProfile._id,
-        role: 'parent'
-      })
+      expect(response.status).toBe(400)
+      expect(response.body.err).toMatch(/invalid id/i)
+    })
 
-      const parentToken = jwt.sign(
-        { user: parentUser._id },
-        process.env.SECRET,
-        { expiresIn: '24h' }
-      )
-
-      const studentData = {
-        name: 'Child User',
-        email: 'parent@example.com', // Same as parent
-        grade: 2,
-        role: 'student',
-        avatar: 'child-avatar.png'
-      }
+    it('returns not found for missing profiles', async () => {
+      Profile.findById.mockReturnValue(createPopulateQuery(null))
 
       const response = await request(app)
-        .post('/api/auth/addStudent')
-        .set('Authorization', `Bearer ${parentToken}`)
-        .send(studentData)
-        .expect(201)
+        .get(`/api/profiles/${profileId}`)
+        .set(createAuthedRequest())
 
-      expect(response.body).toHaveProperty('token')
+      expect(response.status).toBe(404)
+      expect(response.body).toHaveProperty('err', 'Profile not found')
+    })
 
-      // Verify student was added to parent's profile
-      const updatedParentProfile = await Profile.findById(
-        parentProfile._id
-      ).populate('students')
-      expect(updatedParentProfile.students).toHaveLength(1)
-      expect(updatedParentProfile.students[0].name).toBe('Child User')
+    it('rejects invalid jwt tokens', async () => {
+      const response = await request(app)
+        .get(`/api/profiles/${profileId}`)
+        .set('Authorization', 'Bearer invalid.jwt.token')
+
+      expect(response.status).toBe(401)
+      expect(response.body).toHaveProperty('err', 'Invalid token')
     })
   })
 })

@@ -5,10 +5,10 @@
   "scripts": {
     "start": "node ./bin/www.js",
     "dev": "nodemon ./bin/www.js",
-    "test": "node ../e2e-monitoring-test.js",
-    "test:monitoring": "node ../e2e-monitoring-test.js",
-    "security:audit": "node ../security-audit.js",
-    "build:optimize": "node ../build-optimizer.js",
+    "test": "vitest run",
+    "test:monitoring": "node ../archive/testing/e2e-monitoring-test.js",
+    "security:audit": "node ../archive/utilities/security-audit.js",
+    "build:optimize": "node ../archive/utilities/build-optimizer.js",
     "monitoring:start": "PERFORMANCE_MONITORING_ENABLED=true npm start",
     "production": "NODE_ENV=production npm start"
   },
@@ -28,6 +28,8 @@
     "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
-    "nodemon": "^2.0.20"
+    "nodemon": "^2.0.20",
+    "supertest": "^7.2.2",
+    "vitest": "^3.2.4"
   }
 }
