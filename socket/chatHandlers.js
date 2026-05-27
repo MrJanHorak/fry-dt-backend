@@ -10,7 +10,9 @@ export function handleChatEvents(socket, io, allUsers) {
   socket.on('join_room', (data) => {
     try {
       const { username, user, room } = data
-      const existingUser = allUsers.find((roomUser) => roomUser.id === socket.id)
+      const existingUser = allUsers.find(
+        (roomUser) => roomUser.id === socket.id
+      )
       const previousRoom = existingUser?.room || null
 
       if (previousRoom && previousRoom !== room) {

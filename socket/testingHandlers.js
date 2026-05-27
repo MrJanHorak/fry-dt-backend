@@ -62,13 +62,12 @@ const buildSessionRecord = ({
     wordCount: wordsToTest.length,
     testTypes: [testType]
   },
-  results:
-    results || {
-      totalWords: wordsToTest.length,
-      correctWords: 0,
-      averageResponseTime: 0,
-      averageConfidence: 0
-    },
+  results: results || {
+    totalWords: wordsToTest.length,
+    correctWords: 0,
+    averageResponseTime: 0,
+    averageConfidence: 0
+  },
   teacherId: teacherProfileId,
   studentId: studentProfileId,
   startTime,
@@ -290,7 +289,9 @@ export function handleTestingEvents(socket, io, allUsers) {
       const participantProfileIds = [
         ...new Set(
           allUsers
-            .filter((user) => user.room === room && user.user?.role === 'student')
+            .filter(
+              (user) => user.room === room && user.user?.role === 'student'
+            )
             .map((user) => getProfileId(user.user))
             .filter(Boolean)
         )
@@ -422,7 +423,10 @@ export function handleTestingEvents(socket, io, allUsers) {
         activeSession.participantProfileIds.add(studentProfileId)
 
         if (!activeSession.persistedParticipants.has(studentProfileId)) {
-          await createActiveStudentSessionRecord(activeSession, studentProfileId)
+          await createActiveStudentSessionRecord(
+            activeSession,
+            studentProfileId
+          )
         }
 
         const participantState = getOrCreateParticipantState(
@@ -539,7 +543,10 @@ export function handleTestingEvents(socket, io, allUsers) {
         activeSession.participantProfileIds.add(studentProfileId)
 
         if (!activeSession.persistedParticipants.has(studentProfileId)) {
-          await createActiveStudentSessionRecord(activeSession, studentProfileId)
+          await createActiveStudentSessionRecord(
+            activeSession,
+            studentProfileId
+          )
         }
 
         const participantState = getOrCreateParticipantState(

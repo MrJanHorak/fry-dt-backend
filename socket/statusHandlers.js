@@ -102,11 +102,11 @@ export function handleStatusEvents(socket, io, allUsers) {
     existingEntry.wordsCompleted =
       typeof data.wordsCompleted === 'number'
         ? data.wordsCompleted
-        : existingEntry.wordsCompleted ?? 0
+        : (existingEntry.wordsCompleted ?? 0)
     existingEntry.totalWords =
       typeof data.totalWords === 'number'
         ? data.totalWords
-        : existingEntry.totalWords ?? 0
+        : (existingEntry.totalWords ?? 0)
     existingEntry.isListening =
       typeof data.isListening === 'boolean'
         ? data.isListening
@@ -216,7 +216,11 @@ export function handleStatusEvents(socket, io, allUsers) {
     try {
       const { studentProfileIds = [], room, teacherId, teacherName } = data
 
-      if (!room || !Array.isArray(studentProfileIds) || !studentProfileIds.length) {
+      if (
+        !room ||
+        !Array.isArray(studentProfileIds) ||
+        !studentProfileIds.length
+      ) {
         socket.emit('testing_center_invite_result', {
           room,
           results: [],
