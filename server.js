@@ -3,6 +3,7 @@ import 'dotenv/config.js'
 import express from 'express'
 import logger from 'morgan'
 import cors from 'cors'
+import helmet from 'helmet'
 
 // import routes
 import { router as authRouter } from './routes/auth.js'
@@ -17,32 +18,52 @@ import {
   performanceMiddleware,
   errorTrackingMiddleware
 } from './middleware/performanceMonitor.js'
+import { decodeUserFromToken, checkAuth } from './middleware/auth.js'
+import { requireAdmin } from './middleware/authorize.js'
 
 // connect to MongoDB unless a test run explicitly disables it
 if (process.env.SKIP_DB_CONNECTION !== 'true') {
   import('./config/database.js')
 }
 
+if (process.env.NODE_ENV === 'production' && !process.env.SECRET) {
+  throw new Error('SECRET must be set in production')
+}
+
 // create the express app
 const app = express()
 
-// Configure CORS
+if (process.env.TRUST_PROXY === 'true') {
+  app.set('trust proxy', 1)
+}
+
+export const allowedOrigins = [
+  ...(process.env.NODE_ENV === 'production'
+    ? []
+    : [
+        'http://localhost:3000',
+        'http://localhost:3001',
+        'http://localhost:3002',
+        'http://localhost:3003',
+        'http://localhost:5173'
+      ]),
+  ...(process.env.CLIENT_URL || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+]
+
+app.use(helmet())
 app.use(
   cors({
-    origin: [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://localhost:3002',
-      'http://localhost:3003',
-      process.env.CLIENT_URL
-    ].filter(Boolean),
+    origin: allowedOrigins,
     credentials: true
   })
 )
 
-app.use(logger('dev'))
-app.use(express.json({ limit: '10mb' }))
-app.use(express.urlencoded({ extended: true, limit: '10mb' }))
+app.use(logger(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'))
+app.use(express.json({ limit: '1mb' }))
+app.use(express.urlencoded({ extended: true, limit: '1mb' }))
 
 // Performance monitoring middleware
 app.use(performanceMiddleware)
@@ -56,12 +77,28 @@ app.get('/health', (req, res) => {
   })
 })
 
+// Operational/monitoring endpoints are admin-only (their /health stays public)
+const adminOnlyExceptHealth = (req, res, next) => {
+  if (req.method === 'GET' && req.path === '/health') return next()
+  checkAuth(req, res, () => requireAdmin(req, res, next))
+}
+
 // routes
 app.use('/api/auth', authRouter)
 app.use('/api/profiles', profilesRouter)
-app.use('/api/performance', performanceRouter)
-app.use('/api/database', databaseRouter)
-app.use('/api/ux', uxRouter)
+app.use(
+  '/api/performance',
+  decodeUserFromToken,
+  adminOnlyExceptHealth,
+  performanceRouter
+)
+app.use(
+  '/api/database',
+  decodeUserFromToken,
+  adminOnlyExceptHealth,
+  databaseRouter
+)
+app.use('/api/ux', decodeUserFromToken, adminOnlyExceptHealth, uxRouter)
 
 // Error tracking middleware (before error handlers)
 app.use(errorTrackingMiddleware)

@@ -349,7 +349,7 @@ router.put(
   checkAuth,
   asyncHandler(async (req, res) => {
     // Check if user has admin privileges
-    if (!req.user?.profile?.isAdmin) {
+    if (!req.requester?.isAdmin) {
       return res.status(403).json({
         success: false,
         message: 'Admin privileges required to update UX testing configuration'
@@ -447,7 +447,7 @@ router.get(
   checkAuth,
   asyncHandler(async (req, res) => {
     // Check if user has admin privileges
-    if (!req.user?.profile?.isAdmin) {
+    if (!req.requester?.isAdmin) {
       return res.status(403).json({
         success: false,
         message: 'Admin privileges required to view feedback'

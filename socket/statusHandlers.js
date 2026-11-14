@@ -3,6 +3,8 @@
  * Handles all status-related socket events for user presence and activities
  */
 
+import { isTeacherLike, profileRoom, publicUser } from './socketAuth.js'
+
 const presenceByProfileId = new Map()
 const socketToProfileId = new Map()
 
@@ -42,16 +44,41 @@ export function handleStatusEvents(socket, io, allUsers) {
     if (!presenceEntry) return null
 
     const serializedEntry = serializePresenceEntry(presenceEntry)
-    io.emit('presence_updated', serializedEntry)
+    // Only the person themselves and their teachers/parents see their status
+    audienceRooms(presenceEntry).forEach((roomName) =>
+      io.to(roomName).emit('presence_updated', serializedEntry)
+    )
     return serializedEntry
   }
 
-  const getPresenceSnapshot = () =>
-    Array.from(presenceByProfileId.values()).map(serializePresenceEntry)
+  const audienceRooms = (entry) => [
+    profileRoom(entry.profileId),
+    ...(entry.guardianIds || []).map(profileRoom)
+  ]
 
-  const upsertPresence = (data = {}) => {
-    const profileId = getProfileId(data.user, data.profileId)
-    if (!profileId) return null
+  const getPresenceSnapshot = () => {
+    const identity = socket.data.identity
+    return Array.from(presenceByProfileId.values())
+      .filter(
+        (entry) =>
+          identity.isAdmin ||
+          entry.profileId === identity.profileId ||
+          identity.studentIds.has(entry.profileId)
+      )
+      .map(serializePresenceEntry)
+  }
+
+  const upsertPresence = (rawData = {}) => {
+    const identity = socket.data.identity
+    // Never trust who the client says it is
+    const data = {
+      ...rawData,
+      profileId: identity.profileId,
+      name: identity.name,
+      role: identity.role,
+      user: undefined
+    }
+    const profileId = identity.profileId
 
     const existingEntry = presenceByProfileId.get(profileId) || {
       profileId,
@@ -73,8 +100,9 @@ export function handleStatusEvents(socket, io, allUsers) {
     }
 
     existingEntry.socketIds.add(socket.id)
-    existingEntry.name = data.user?.name || data.name || existingEntry.name
-    existingEntry.role = data.user?.role || data.role || existingEntry.role
+    existingEntry.name = identity.name
+    existingEntry.role = identity.role
+    existingEntry.guardianIds = identity.guardianIds
     existingEntry.status = data.status || 'online'
     existingEntry.currentPath = Object.prototype.hasOwnProperty.call(
       data,
@@ -141,7 +169,9 @@ export function handleStatusEvents(socket, io, allUsers) {
 
     if (presenceEntry.socketIds.size === 0) {
       presenceByProfileId.delete(profileId)
-      io.emit('presence_removed', { profileId })
+      audienceRooms(presenceEntry).forEach((roomName) =>
+        io.to(roomName).emit('presence_removed', { profileId })
+      )
       return { profileId }
     }
 
@@ -152,7 +182,8 @@ export function handleStatusEvents(socket, io, allUsers) {
   // Handle user status updates (online, offline, typing, etc.)
   socket.on('update_status', (data) => {
     try {
-      const { status, room, user } = data
+      const { status, room } = data
+      const user = publicUser(socket.data.identity)
 
       // Find user in allUsers array
       const userIndex = allUsers.findIndex((u) => u.id === socket.id)
@@ -214,7 +245,25 @@ export function handleStatusEvents(socket, io, allUsers) {
 
   socket.on('request_testing_center_invite', (data) => {
     try {
-      const { studentProfileIds = [], room, teacherId, teacherName } = data
+      const identity = socket.data.identity
+      if (!isTeacherLike(identity)) {
+        socket.emit('testing_center_invite_result', {
+          room: data?.room,
+          results: [],
+          error: 'Only teachers can send invites'
+        })
+        return
+      }
+
+      const { room } = data || {}
+      const teacherId = identity.profileId
+      const teacherName = identity.name
+      // Teachers can only invite students on their own roster
+      const studentProfileIds = (
+        Array.isArray(data?.studentProfileIds) ? data.studentProfileIds : []
+      ).filter(
+        (id) => identity.isAdmin || identity.studentIds.has(String(id))
+      )
 
       if (
         !room ||
@@ -278,7 +327,9 @@ export function handleStatusEvents(socket, io, allUsers) {
   // Handle typing indicators
   socket.on('typing_start', (data) => {
     try {
-      const { room, username } = data
+      const { room } = data || {}
+      if (!room || !socket.rooms.has(room)) return
+      const username = socket.data.identity.name
       socket.to(room).emit('user_typing', { username, isTyping: true })
     } catch (error) {
       console.error('Error in typing_start:', error)
@@ -287,7 +338,9 @@ export function handleStatusEvents(socket, io, allUsers) {
 
   socket.on('typing_stop', (data) => {
     try {
-      const { room, username } = data
+      const { room } = data || {}
+      if (!room || !socket.rooms.has(room)) return
+      const username = socket.data.identity.name
       socket.to(room).emit('user_typing', { username, isTyping: false })
     } catch (error) {
       console.error('Error in typing_stop:', error)
@@ -297,7 +350,8 @@ export function handleStatusEvents(socket, io, allUsers) {
   // Handle user activity tracking
   socket.on('user_activity', (data) => {
     try {
-      const { activity, room, user } = data
+      const { activity, room } = data
+      const user = publicUser(socket.data.identity)
 
       // Update user's last activity
       const userIndex = allUsers.findIndex((u) => u.id === socket.id)
@@ -312,7 +366,7 @@ export function handleStatusEvents(socket, io, allUsers) {
       })
 
       // Broadcast activity to room (if needed)
-      if (room && activity.broadcast) {
+      if (room && activity?.broadcast && socket.rooms.has(room)) {
         socket.to(room).emit('user_activity_update', {
           user,
           activity: activity.type,

@@ -1,17 +1,12 @@
 import mongoose from 'mongoose'
 import bcrypt from 'bcrypt'
-const SALT_ROUNDS = 6
+import crypto from 'crypto'
+
+const SALT_ROUNDS = Number(process.env.BCRYPT_ROUNDS) || 12
 
 /**
- * User Schema
- * @typedef {Object} UserSchema
- * @property {string} name - The name of the user.
- * @property {string} email - The email of the user.
- * @property {string} password - The password of the user.
- * @property {mongoose.Schema.Types.ObjectId} profile - The profile of the user.
- * @property {string} role - The role of the user.
- * @property {Date} createdAt - The date when the user was created.
- * @property {Date} updatedAt - The date when the user was last updated.
+ * User Schema (login credentials).
+ * The matching Profile document holds everything about the learner/teacher.
  */
 const userSchema = new mongoose.Schema(
   {
@@ -26,7 +21,10 @@ const userSchema = new mongoose.Schema(
     isPasswordUpdate: {
       type: Boolean,
       default: false
-    }
+    },
+    // SHA-256 of the student's personal QR login code (never stored in clear)
+    loginCodeHash: { type: String, select: false },
+    loginCodeIssuedAt: { type: Date }
   },
   {
     timestamps: true
@@ -36,6 +34,7 @@ const userSchema = new mongoose.Schema(
 userSchema.set('toJSON', {
   transform: function (doc, ret) {
     delete ret.password
+    delete ret.loginCodeHash
     return ret
   }
 })
@@ -52,7 +51,6 @@ userSchema.pre('save', function (next) {
     .hash(user.password, SALT_ROUNDS)
     .then((hash) => {
       user.password = hash
-      user.isPasswordUpdate = false
       next()
     })
     .catch((err) => {
@@ -63,6 +61,17 @@ userSchema.pre('save', function (next) {
 
 userSchema.methods.comparePassword = function (tryPassword, cb) {
   bcrypt.compare(tryPassword, this.password, cb)
+}
+
+export const hashLoginCode = (code) =>
+  crypto.createHash('sha256').update(String(code)).digest('hex')
+
+/** Creates a fresh random QR login code, stores its hash, returns the code. */
+userSchema.methods.issueLoginCode = function () {
+  const code = crypto.randomBytes(18).toString('base64url')
+  this.loginCodeHash = hashLoginCode(code)
+  this.loginCodeIssuedAt = new Date()
+  return code
 }
 
 const User = mongoose.model('User', userSchema)

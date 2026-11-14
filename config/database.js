@@ -5,7 +5,14 @@ const db = mongoose.connection
 let dbOptimizer = null
 
 mongoose.set('strictQuery', false)
-mongoose.connect(process.env.MONGO_DB)
+
+if (process.env.SKIP_DB_CONNECTION === 'true') {
+  // Tests run without a database
+} else if (!process.env.MONGO_DB) {
+  console.error('MONGO_DB is not set; cannot connect to MongoDB')
+} else {
+  mongoose.connect(process.env.MONGO_DB)
+}
 
 db.on('connected', async function () {
   console.log(`Connected to MongoDB ${db.name} at ${db.host}:${db.port}`)
