@@ -170,6 +170,41 @@ describe('summaries and practice', () => {
   })
 })
 
+describe('insights and exports', () => {
+  it('gives teachers class insights', async () => {
+    const res = await request(app).get('/api/progress/insights?days=7').set(authAs(teacherId))
+    expect(res.status).toBe(200)
+    expect(res.body.totals.students).toBe(1)
+    expect(res.body.daily).toHaveLength(14)
+    expect(res.body.attention[0].flags[0].code).toBe('no-practice')
+  })
+
+  it('keeps insights and class exports away from students', async () => {
+    expect((await request(app).get('/api/progress/insights').set(authAs(studentId))).status).toBe(403)
+    expect((await request(app).get('/api/progress/class/export.csv').set(authAs(studentId))).status).toBe(403)
+  })
+
+  it('exports class progress as CSV', async () => {
+    const res = await request(app).get('/api/progress/class/export.csv').set(authAs(teacherId))
+    expect(res.status).toBe(200)
+    expect(res.headers['content-type']).toMatch(/text\/csv/)
+    expect(res.headers['content-disposition']).toMatch(/attachment; filename="class-progress-/)
+    expect(res.text).toMatch(/Student,Grade,Words mastered/)
+    expect(res.text).toMatch(/Emma/)
+  })
+
+  it("exports one student's words only for their teacher or themselves", async () => {
+    WordAttempt.find.mockImplementation(() =>
+      makeQuery([{ word: 'the', wordKey: 'the', correct: true, automatic: true, timed: true, skill: 'expressive', date: new Date() }])
+    )
+    const res = await request(app).get(`/api/progress/${studentId}/export.csv`).set(authAs(teacherId))
+    expect(res.status).toBe(200)
+    expect(res.text).toMatch(/Word,Fry list,Status/)
+    expect(res.text).toMatch(/the,1,learning/)
+    expect((await request(app).get(`/api/progress/${strangerId}/export.csv`).set(authAs(teacherId))).status).toBe(403)
+  })
+})
+
 describe('assignments', () => {
   it('creates an assignment for your own students with cleaned words', async () => {
     Assignment.create.mockImplementation(async (doc) => ({ _id: 'a1', ...doc }))
