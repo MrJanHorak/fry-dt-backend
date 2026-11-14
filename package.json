@@ -10,7 +10,8 @@
     "security:audit": "node ../archive/utilities/security-audit.js",
     "build:optimize": "node ../archive/utilities/build-optimizer.js",
     "monitoring:start": "PERFORMANCE_MONITORING_ENABLED=true npm start",
-    "production": "NODE_ENV=production npm start"
+    "production": "NODE_ENV=production npm start",
+    "migrate:history": "node scripts/migrate-history.js"
   },
   "author": "Jan Horak",
   "license": "ISC",
