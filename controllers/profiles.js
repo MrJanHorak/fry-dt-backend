@@ -46,7 +46,8 @@ const EDUCATOR_EDITABLE_FIELDS = [
   'currentLevel',
   'fryGradelevel',
   'autoAdvance',
-  'accommodations'
+  'accommodations',
+  'goal'
 ]
 const PRACTICED_WORD_FIELDS = [
   'word',

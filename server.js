@@ -11,6 +11,11 @@ import { router as profilesRouter } from './routes/profiles.js'
 import { router as performanceRouter } from './routes/performance.js'
 import { router as databaseRouter } from './routes/database.js'
 import { router as uxRouter } from './routes/ux.js'
+import {
+  wordsRouter,
+  progressRouter,
+  assignmentsRouter
+} from './routes/learning.js'
 
 // import middleware
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js'
@@ -86,6 +91,9 @@ const adminOnlyExceptHealth = (req, res, next) => {
 // routes
 app.use('/api/auth', authRouter)
 app.use('/api/profiles', profilesRouter)
+app.use('/api/words', wordsRouter)
+app.use('/api/progress', progressRouter)
+app.use('/api/assignments', assignmentsRouter)
 app.use(
   '/api/performance',
   decodeUserFromToken,
