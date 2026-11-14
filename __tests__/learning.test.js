@@ -185,8 +185,12 @@ describe('insights and exports', () => {
   })
 
   it('exports class progress as CSV', async () => {
-    const res = await request(app).get('/api/progress/class/export.csv').set(authAs(teacherId))
+    const res = await request(app)
+      .get('/api/progress/class/export.csv')
+      .set(authAs(teacherId))
+      .set('Origin', 'http://localhost:3000')
     expect(res.status).toBe(200)
+    expect(res.headers['access-control-expose-headers']).toMatch(/Content-Disposition/)
     expect(res.headers['content-type']).toMatch(/text\/csv/)
     expect(res.headers['content-disposition']).toMatch(/attachment; filename="class-progress-/)
     expect(res.text).toMatch(/Student,Grade,Words mastered/)

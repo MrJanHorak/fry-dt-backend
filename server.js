@@ -64,7 +64,9 @@ app.use(helmet())
 app.use(
   cors({
     origin: allowedOrigins,
-    credentials: true
+    credentials: true,
+    // Lets the browser read the file name of CSV exports
+    exposedHeaders: ['Content-Disposition']
   })
 )
 
