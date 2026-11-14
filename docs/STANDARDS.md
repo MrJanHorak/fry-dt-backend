@@ -68,6 +68,24 @@ measurement graph for deciding whether an intervention is working. The
 1:1 benchmark presents words in random order and can stop after N misses in
 a row so struggling readers aren't discouraged.
 
+## Speech recognition ("Say it")
+
+- **Off by default.** A teacher or parent turns it on per student
+  (accommodation answer mode `speech`).
+- **On-device only.** The app only uses the browser's speech recognition
+  when the browser confirms local processing (Web Speech API
+  `processLocally`). Otherwise the microphone is never turned on. There is
+  no cloud fallback, and no audio is recorded or stored.
+- **Confirm-only scoring.** Recognizers are much less accurate on young
+  children's speech than on adults', so the computer may confirm a correct
+  read (`scoredBy: speech`) but never marks a child wrong. If it doesn't
+  hear the word, the child hears the model and self-checks.
+- Sound-alike words (to/two/too, there/their …) are accepted, because a
+  reader saying them aloud cannot be told apart.
+- Availability depends on the browser and device. Where it isn't
+  available, a self-hosted engine such as Vosk (WebAssembly, word-list
+  grammar) is the planned alternative.
+
 ## Accessibility and privacy
 
 - The frontend is checked against **WCAG 2.1/2.2 Level AA**, the standard
