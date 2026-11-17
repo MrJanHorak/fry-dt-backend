@@ -1,6 +1,8 @@
 import 'dotenv/config.js'
 
 import express from 'express'
+import path from 'path'
+import { fileURLToPath } from 'url'
 import logger from 'morgan'
 import cors from 'cors'
 import helmet from 'helmet'
@@ -11,6 +13,11 @@ import { router as profilesRouter } from './routes/profiles.js'
 import { router as performanceRouter } from './routes/performance.js'
 import { router as databaseRouter } from './routes/database.js'
 import { router as uxRouter } from './routes/ux.js'
+import {
+  wordsRouter,
+  progressRouter,
+  assignmentsRouter
+} from './routes/learning.js'
 
 // import middleware
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js'
@@ -57,7 +64,9 @@ app.use(helmet())
 app.use(
   cors({
     origin: allowedOrigins,
-    credentials: true
+    credentials: true,
+    // Lets the browser read the file name of CSV exports
+    exposedHeaders: ['Content-Disposition']
   })
 )
 
@@ -77,6 +86,24 @@ app.get('/health', (req, res) => {
   })
 })
 
+// Self-hosted Vosk speech model for the "Say it" activity (see
+// scripts/fetch-vosk-model.js). Served cross-origin to the frontend only via
+// the CORS allow-list above; the browser caches it for a week.
+const serverDir = path.dirname(fileURLToPath(import.meta.url))
+app.use(
+  '/models',
+  (req, res, next) => {
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin')
+    next()
+  },
+  express.static(path.join(serverDir, 'public', 'models'), {
+    maxAge: '7d',
+    index: false,
+    dotfiles: 'deny',
+    fallthrough: true
+  })
+)
+
 // Operational/monitoring endpoints are admin-only (their /health stays public)
 const adminOnlyExceptHealth = (req, res, next) => {
   if (req.method === 'GET' && req.path === '/health') return next()
@@ -86,6 +113,9 @@ const adminOnlyExceptHealth = (req, res, next) => {
 // routes
 app.use('/api/auth', authRouter)
 app.use('/api/profiles', profilesRouter)
+app.use('/api/words', wordsRouter)
+app.use('/api/progress', progressRouter)
+app.use('/api/assignments', assignmentsRouter)
 app.use(
   '/api/performance',
   decodeUserFromToken,

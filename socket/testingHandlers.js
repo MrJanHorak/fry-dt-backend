@@ -5,6 +5,7 @@
 
 import { Profile } from '../models/profile.js'
 import { isTeacherLike, teachesStudent } from './socketAuth.js'
+import { upsertLiveAttempt } from '../services/attempts.js'
 
 const activeTestSessions = new Map()
 
@@ -632,6 +633,20 @@ export function handleTestingEvents(socket, io, allUsers) {
           recognized,
           score
         )
+
+        // Feed the shared mastery data (WordAttempt collection)
+        await upsertLiveAttempt({
+          studentId: studentProfileId,
+          teacherId: identity().profileId,
+          word,
+          correct: Boolean(recognized),
+          responseMs: updatedResponse.responseTime,
+          sessionId,
+          errorResponse:
+            Boolean(recognized) || typeof updatedResponse.response !== 'string'
+              ? undefined
+              : updatedResponse.response
+        })
       }
 
       // Broadcast assessment saved to room (for any observers)

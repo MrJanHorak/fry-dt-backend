@@ -10,11 +10,16 @@
     "security:audit": "node ../archive/utilities/security-audit.js",
     "build:optimize": "node ../archive/utilities/build-optimizer.js",
     "monitoring:start": "PERFORMANCE_MONITORING_ENABLED=true npm start",
-    "production": "NODE_ENV=production npm start"
+    "production": "NODE_ENV=production npm start",
+    "migrate:history": "node scripts/migrate-history.js",
+    "fetch:vosk-model": "node scripts/fetch-vosk-model.js",
+    "seed:demo": "node scripts/seed-demo.js",
+    "smoke": "node scripts/smoke-test.js"
   },
   "author": "Jan Horak",
   "license": "ISC",
   "dependencies": {
+    "adm-zip": "^0.6.1",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.0.3",
@@ -24,7 +29,8 @@
     "jsonwebtoken": "^9.0.0",
     "mongoose": "^6.8.1",
     "morgan": "^1.10.0",
-    "socket.io": "^4.5.4"
+    "socket.io": "^4.5.4",
+    "tar": "^7.5.23"
   },
   "devDependencies": {
     "nodemon": "^2.0.20",
