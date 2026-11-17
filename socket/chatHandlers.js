@@ -3,13 +3,24 @@
  * Handles all chat-related socket events
  */
 
+import { publicUser } from './socketAuth.js'
+
 const CHAT_BOT = 'ChatBot'
+const MAX_MESSAGE_LENGTH = 500
 
 export function handleChatEvents(socket, io, allUsers) {
   // Add a user to a room
   socket.on('join_room', (data) => {
     try {
-      const { username, user, room } = data
+      // Identity always comes from the verified token, never the client
+      const identity = socket.data.identity
+      const username = identity.name
+      const user = publicUser(identity)
+      const room = typeof data?.room === 'string' ? data.room.trim() : ''
+      if (!room) {
+        socket.emit('error', { message: 'Room is required' })
+        return
+      }
       const existingUser = allUsers.find(
         (roomUser) => roomUser.id === socket.id
       )
@@ -71,16 +82,26 @@ export function handleChatEvents(socket, io, allUsers) {
   // Listen for when a message is sent
   socket.on('send_message', (data) => {
     try {
-      const { message, username, user, room, __createdtime__ } = data
+      const identity = socket.data.identity
+      const { room } = data || {}
+      const message =
+        typeof data?.message === 'string'
+          ? data.message.trim().slice(0, MAX_MESSAGE_LENGTH)
+          : ''
 
-      // Validate message data
-      if (!message || !username || !room) {
+      // Validate message data and that the sender is actually in the room
+      if (!message || !room || !socket.rooms.has(room)) {
         socket.emit('error', { message: 'Invalid message data' })
         return
       }
 
-      // Send message to all users in room
-      io.in(room).emit('receive_message', data)
+      io.in(room).emit('receive_message', {
+        message,
+        username: identity.name,
+        user: publicUser(identity),
+        room,
+        __createdtime__: Date.now()
+      })
     } catch (error) {
       console.error('Error in send_message:', error)
       socket.emit('error', { message: 'Failed to send message' })
@@ -91,7 +112,7 @@ export function handleChatEvents(socket, io, allUsers) {
     try {
       const { room } = data || {}
 
-      if (!room) {
+      if (!room || !socket.rooms.has(room)) {
         socket.emit('error', { message: 'Room is required' })
         return
       }

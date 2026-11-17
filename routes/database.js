@@ -140,7 +140,7 @@ router.post(
     }
 
     // Check if user has admin privileges
-    if (!req.user?.profile?.isAdmin) {
+    if (!req.requester?.isAdmin) {
       return res.status(403).json({
         error: 'Admin privileges required for database optimization'
       })
@@ -180,7 +180,7 @@ router.post(
     }
 
     // Check if user has admin privileges
-    if (!req.user?.profile?.isAdmin) {
+    if (!req.requester?.isAdmin) {
       return res.status(403).json({
         error: 'Admin privileges required for index creation'
       })

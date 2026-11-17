@@ -86,6 +86,90 @@ const testSession = new Schema({
   fryLevel: { type: Number, default: 1 } // Which FRY list level (1-10)
 })
 
+/**
+ * Display and reading preferences (UDL "multiple means of representation").
+ * The student, or an adult on their behalf, can change these at any time.
+ */
+const accessibility = new Schema(
+  {
+    font: {
+      type: String,
+      enum: ['default', 'atkinson', 'opendyslexic', 'lexend'],
+      default: 'default'
+    },
+    textScale: { type: Number, min: 1, max: 2.5, default: 1 },
+    letterSpacing: {
+      type: String,
+      enum: ['normal', 'wide', 'wider'],
+      default: 'normal'
+    },
+    lineSpacing: {
+      type: String,
+      enum: ['normal', 'relaxed', 'loose'],
+      default: 'normal'
+    },
+    theme: {
+      type: String,
+      enum: ['default', 'high-contrast', 'dark', 'cream', 'blue-tint', 'yellow-tint'],
+      default: 'default'
+    },
+    reduceMotion: { type: Boolean, default: false },
+    soundEffects: { type: Boolean, default: true },
+    readAloudInstructions: { type: Boolean, default: true },
+    largeTargets: { type: Boolean, default: false },
+    focusMode: { type: Boolean, default: false } // hide everything but the task
+  },
+  { _id: false }
+)
+
+/**
+ * Instructional accommodations (e.g. from an IEP or 504 plan). Only the
+ * student's teacher or parent can change these, because they change how
+ * results are measured.
+ */
+const accommodations = new Schema(
+  {
+    // Seconds a correct response may take and still count as "automatic"
+    automaticitySeconds: { type: Number, min: 1, max: 30, default: 3 },
+    // Turn off all timing (no automaticity measure, no visible timers)
+    untimed: { type: Boolean, default: false },
+    // Max words per practice session (smaller sets reduce cognitive load)
+    wordsPerSession: { type: Number, min: 3, max: 30, default: 10 },
+    // Max not-yet-known words mixed into one session
+    newWordsPerSession: { type: Number, min: 1, max: 10, default: 3 },
+    // Number of answer choices in listen & find (fewer = easier)
+    choiceCount: { type: Number, min: 2, max: 4, default: 3 },
+    // For students who are non-speaking or use AAC: count receptive
+    // (listen & find) success toward mastery
+    receptiveCountsForMastery: { type: Boolean, default: false },
+    // Speak every word automatically when shown
+    autoReadWords: { type: Boolean, default: false },
+    // Suggest a break after this many minutes (0 = never)
+    breakReminderMinutes: { type: Number, min: 0, max: 60, default: 10 },
+    // Allowed ways to answer in self-practice
+    responseModes: {
+      type: [
+        { type: String, enum: ['self-check', 'speech', 'choice', 'build'] }
+      ],
+      default: ['self-check', 'choice', 'build']
+    },
+    notes: { type: String, maxlength: 500 } // private to adults
+  },
+  { _id: false }
+)
+
+/** Progress-monitoring goal (MTSS/IEP style). */
+const goal = new Schema(
+  {
+    targetWords: { type: Number, min: 1, max: 1000 }, // words mastered
+    targetDate: { type: Date },
+    baselineWords: { type: Number, min: 0 },
+    baselineDate: { type: Date },
+    setBy: { type: Schema.Types.ObjectId, ref: 'Profile' }
+  },
+  { _id: false }
+)
+
 const groups = new Schema({
   students: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Profile' }],
   commonWords: [practicedWords]
@@ -115,7 +199,10 @@ const profileSchema = new Schema(
     // Learning preferences
     autoAdvance: { type: Boolean, default: false }, // Auto advance to next level when mastered
     dailyGoal: { type: Number, default: 10 }, // Daily practice goal
-    currentLevel: { type: Number, default: 1 } // Current FRY level (1-10)
+    currentLevel: { type: Number, default: 1, min: 1, max: 10 }, // Current FRY list (1-10)
+    accessibility: { type: accessibility, default: () => ({}) },
+    accommodations: { type: accommodations, default: () => ({}) },
+    goal: { type: goal }
   },
   {
     timestamps: true

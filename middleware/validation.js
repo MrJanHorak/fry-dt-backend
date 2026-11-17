@@ -21,8 +21,10 @@ export function validateSignup(req, res, next) {
     errors.push('Name is required and must be a non-empty string')
   }
 
-  if (role && !['teacher', 'student', 'parent'].includes(role)) {
-    errors.push('Role must be either "teacher", "student", or "parent"')
+  if (role && !['teacher', 'parent'].includes(role)) {
+    errors.push(
+      'Role must be "teacher" or "parent". Student accounts are added by a teacher or parent.'
+    )
   }
 
   if (errors.length > 0) {
@@ -58,17 +60,21 @@ export function validateLogin(req, res, next) {
 }
 
 export function validateAddStudent(req, res, next) {
-  const { name, email } = req.body
+  const { name, grade, password } = req.body
   const errors = []
 
   if (!name || typeof name !== 'string' || !name.trim()) {
     errors.push('Student name is required and must be a non-empty string')
+  } else if (name.trim().length > 40) {
+    errors.push('Student name must be 40 characters or fewer')
   }
 
-  if (!email || typeof email !== 'string' || !email.trim()) {
-    errors.push('Parent email is required and must be a non-empty string')
-  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    errors.push('Email must be a valid email address')
+  if (grade !== undefined && grade !== '' && !(Number(grade) >= 0 && Number(grade) <= 12)) {
+    errors.push('Grade must be a number between 0 (K) and 12')
+  }
+
+  if (password !== undefined && password !== '' && String(password).length < 6) {
+    errors.push('Password must be at least 6 characters long')
   }
 
   if (errors.length > 0) {

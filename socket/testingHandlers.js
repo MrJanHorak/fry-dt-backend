@@ -4,6 +4,8 @@
  */
 
 import { Profile } from '../models/profile.js'
+import { isTeacherLike, teachesStudent } from './socketAuth.js'
+import { upsertLiveAttempt } from '../services/attempts.js'
 
 const activeTestSessions = new Map()
 
@@ -266,14 +268,43 @@ const finalizeStudentSession = async (session, studentProfileId, endTime) => {
 }
 
 export function handleTestingEvents(socket, io, allUsers) {
+  const identity = () => socket.data.identity
+
+  const denyUnlessTeacher = () => {
+    if (isTeacherLike(identity())) return false
+    socket.emit('test_error', { message: 'Only teachers can do that' })
+    return true
+  }
+
+  // A session can only be controlled by the teacher who started it
+  const denyUnlessSessionOwner = (sessionId) => {
+    const session = activeTestSessions.get(sessionId)
+    if (
+      session &&
+      !identity().isAdmin &&
+      session.teacherProfileId !== identity().profileId
+    ) {
+      socket.emit('test_error', { message: 'This is not your test session' })
+      return true
+    }
+    return false
+  }
+
   // Teacher starts a new test session
   socket.on('start_test_session', async (data) => {
     try {
-      const { sessionId, teacherId, room, testType, wordsToTest, fryLevel } =
-        data
+      if (denyUnlessTeacher()) return
+      const { sessionId, room, testType, wordsToTest, fryLevel } = data || {}
+      const teacherId = identity().profileId
 
       // Validate required data
-      if (!sessionId || !teacherId || !room || !testType || !wordsToTest) {
+      if (
+        !sessionId ||
+        !room ||
+        !testType ||
+        !Array.isArray(wordsToTest) ||
+        !wordsToTest.length
+      ) {
         socket.emit('test_error', {
           message: 'Missing required test session data'
         })
@@ -284,8 +315,10 @@ export function handleTestingEvents(socket, io, allUsers) {
         `Teacher ${teacherId} starting test session ${sessionId} in room ${room}`
       )
 
-      const teacher = allUsers.find((user) => user.id === socket.id)
-      const teacherProfileId = getProfileId(teacher?.user) || teacherId
+      if (activeTestSessions.has(sessionId) && denyUnlessSessionOwner(sessionId))
+        return
+
+      const teacherProfileId = teacherId
       const participantProfileIds = [
         ...new Set(
           allUsers
@@ -294,6 +327,8 @@ export function handleTestingEvents(socket, io, allUsers) {
             )
             .map((user) => getProfileId(user.user))
             .filter(Boolean)
+            // Only record results for students on this teacher's roster
+            .filter((profileId) => teachesStudent(identity(), profileId))
         )
       ]
 
@@ -349,7 +384,10 @@ export function handleTestingEvents(socket, io, allUsers) {
   // Teacher sends a specific word to test
   socket.on('send_test_word', (data) => {
     try {
-      const { sessionId, word, testType, difficulty, room, sequence } = data
+      if (denyUnlessTeacher()) return
+      const { sessionId, word, testType, difficulty, room, sequence } =
+        data || {}
+      if (denyUnlessSessionOwner(sessionId)) return
 
       // Validate required data
       if (!sessionId || !word || !testType || !room) {
@@ -389,17 +427,18 @@ export function handleTestingEvents(socket, io, allUsers) {
       const {
         sessionId,
         word,
-        studentId,
-        studentName,
         response,
         responseTime,
         testType,
         recognized,
         confidence
-      } = data
+      } = data || {}
+      // The student is whoever is signed in on this socket
+      const studentId = identity().profileId
+      const studentName = identity().name
 
       // Validate required data
-      if (!sessionId || !word || !studentId || !testType) {
+      if (!sessionId || !word || !testType) {
         socket.emit('test_error', { message: 'Missing required response data' })
         return
       }
@@ -415,11 +454,15 @@ export function handleTestingEvents(socket, io, allUsers) {
         return
       }
 
-      const studentProfileId = studentId || getProfileId(student.user)
+      const studentProfileId = studentId
       const activeSession = activeTestSessions.get(sessionId)
       const deliveryRoom = activeSession?.room || student.room
+      // Only persist if the session's teacher actually teaches this student
+      const sessionTeacherTeachesMe =
+        activeSession &&
+        identity().guardianIds.includes(activeSession.teacherProfileId)
 
-      if (activeSession && studentProfileId) {
+      if (activeSession && studentProfileId && sessionTeacherTeachesMe) {
         activeSession.participantProfileIds.add(studentProfileId)
 
         if (!activeSession.persistedParticipants.has(studentProfileId)) {
@@ -525,6 +568,14 @@ export function handleTestingEvents(socket, io, allUsers) {
         return
       }
 
+      if (denyUnlessTeacher() || denyUnlessSessionOwner(sessionId)) return
+      if (!teachesStudent(identity(), studentId)) {
+        socket.emit('test_error', {
+          message: 'You can only assess students on your roster'
+        })
+        return
+      }
+
       console.log(
         `Teacher saving assessment for student ${studentId}, word "${word}"`
       )
@@ -582,6 +633,20 @@ export function handleTestingEvents(socket, io, allUsers) {
           recognized,
           score
         )
+
+        // Feed the shared mastery data (WordAttempt collection)
+        await upsertLiveAttempt({
+          studentId: studentProfileId,
+          teacherId: identity().profileId,
+          word,
+          correct: Boolean(recognized),
+          responseMs: updatedResponse.responseTime,
+          sessionId,
+          errorResponse:
+            Boolean(recognized) || typeof updatedResponse.response !== 'string'
+              ? undefined
+              : updatedResponse.response
+        })
       }
 
       // Broadcast assessment saved to room (for any observers)
@@ -611,7 +676,9 @@ export function handleTestingEvents(socket, io, allUsers) {
   // Teacher ends the test session
   socket.on('end_test_session', async (data) => {
     try {
-      const { sessionId, room, completedCount, totalWords } = data
+      if (denyUnlessTeacher()) return
+      const { sessionId, room, completedCount, totalWords } = data || {}
+      if (denyUnlessSessionOwner(sessionId)) return
 
       // Validate required data
       if (!sessionId || !room) {
@@ -665,10 +732,11 @@ export function handleTestingEvents(socket, io, allUsers) {
   // Student requests speech synthesis for a word
   socket.on('request_word_pronunciation', (data) => {
     try {
-      const { word, studentId, sessionId } = data
+      const { word, sessionId } = data || {}
+      const studentId = identity().profileId
 
       // Validate required data
-      if (!word || !studentId) {
+      if (!word) {
         socket.emit('test_error', { message: 'Missing word or student ID' })
         return
       }
@@ -708,7 +776,9 @@ export function handleTestingEvents(socket, io, allUsers) {
   // Teacher updates test session settings
   socket.on('update_test_settings', (data) => {
     try {
-      const { sessionId, settings, room } = data
+      if (denyUnlessTeacher()) return
+      const { sessionId, settings, room } = data || {}
+      if (denyUnlessSessionOwner(sessionId)) return
 
       // Validate required data
       if (!sessionId || !settings || !room) {

@@ -324,7 +324,7 @@ router.get(
 router.post('/baseline/reset', decodeUserFromToken, checkAuth, (req, res) => {
   try {
     // Check if user has admin privileges
-    if (!req.user?.profile?.isAdmin) {
+    if (!req.requester?.isAdmin) {
       return res.status(403).json({
         success: false,
         message: 'Admin privileges required'
@@ -358,7 +358,7 @@ router.put(
   (req, res) => {
     try {
       // Check if user has admin privileges
-      if (!req.user?.profile?.isAdmin) {
+      if (!req.requester?.isAdmin) {
         return res.status(403).json({
           success: false,
           message: 'Admin privileges required'

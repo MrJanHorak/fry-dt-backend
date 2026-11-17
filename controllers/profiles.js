@@ -1,4 +1,66 @@
 import { Profile } from '../models/profile.js'
+import { loadRequester, pick } from '../middleware/authorize.js'
+
+const ASSESSMENT_FIELDS = [
+  'testType',
+  'words',
+  'responses',
+  'score',
+  'duration',
+  'teacherNotes',
+  'assessmentData',
+  'difficulty',
+  'sessionId'
+]
+const TEST_SESSION_FIELDS = [
+  'sessionId',
+  'sessionType',
+  'testType',
+  'wordsUsed',
+  'sessionSettings',
+  'results',
+  'teacherId',
+  'studentId',
+  'endTime',
+  'status',
+  'teacherNotes',
+  'fryLevel'
+]
+
+// Fields anyone may change on their own profile (preferences).
+const SELF_EDITABLE_FIELDS = [
+  'name',
+  'avatar',
+  'pitch',
+  'rate',
+  'voice',
+  'speechRecognitionEnabled',
+  'preferredLanguage',
+  'dailyGoal',
+  'accessibility'
+]
+// Extra fields a student's teacher/parent may change.
+const EDUCATOR_EDITABLE_FIELDS = [
+  ...SELF_EDITABLE_FIELDS,
+  'grade',
+  'currentLevel',
+  'fryGradelevel',
+  'autoAdvance',
+  'accommodations',
+  'goal'
+]
+const PRACTICED_WORD_FIELDS = [
+  'word',
+  'mastered',
+  'timesPracticed',
+  'timesCorrect',
+  'timesIncorrect',
+  'streak',
+  'recordOfWrongs',
+  'lastPracticed',
+  'speechRecognitionScore',
+  'responseTime'
+]
 
 const parseFilterDate = (value, endOfDay = false) => {
   if (!value) return null
@@ -64,14 +126,24 @@ async function show(req, res) {
 
 async function update(req, res) {
   try {
-    if (!req.params.id) {
-      return res.status(400).json({ err: 'Profile ID is required' })
+    const requester = await loadRequester(req)
+    const isSelf = requester?.profileId === req.params.id
+    const allowed =
+      requester?.isAdmin || !isSelf
+        ? EDUCATOR_EDITABLE_FIELDS
+        : SELF_EDITABLE_FIELDS
+
+    // role, email, isAdmin, students, assessments, etc. can never be set here
+    const updates = pick(req.body, allowed)
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ err: 'No editable fields supplied' })
     }
 
-    const profile = await Profile.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true
-    })
+    const profile = await Profile.findByIdAndUpdate(
+      req.params.id,
+      { $set: updates },
+      { new: true, runValidators: true }
+    )
 
     if (!profile) {
       return res.status(404).json({ err: 'Profile not found' })
@@ -97,7 +169,7 @@ async function addPracticedWord(req, res) {
       return res.status(404).json({ err: 'Profile not found' })
     }
 
-    profile.practicedWords.push(req.body)
+    profile.practicedWords.push(pick(req.body, PRACTICED_WORD_FIELDS))
     await profile.save()
 
     res.status(200).json(profile.practicedWords)
@@ -128,7 +200,9 @@ async function updatePracticedWord(req, res) {
       return res.status(404).json({ err: 'Practiced word not found' })
     }
 
-    profile.practicedWords[wordIndex] = req.body
+    profile.practicedWords[wordIndex].set(
+      pick(req.body, PRACTICED_WORD_FIELDS)
+    )
     await profile.save()
 
     res.status(200).json(profile.practicedWords[wordIndex])
@@ -144,6 +218,13 @@ async function removeStudentFromProfile(req, res) {
       return res
         .status(400)
         .json({ err: 'Profile ID and student ID are required' })
+    }
+
+    const requester = await loadRequester(req)
+    if (!requester?.isAdmin && requester?.profileId !== req.params.id) {
+      return res
+        .status(403)
+        .json({ err: 'You can only change your own roster' })
     }
 
     const profile = await Profile.findById(req.params.id).populate('students')
@@ -184,7 +265,7 @@ async function addAssessment(req, res) {
 
     // Add assessment with current timestamp
     const assessment = {
-      ...req.body,
+      ...pick(req.body, ASSESSMENT_FIELDS),
       date: new Date()
     }
 
@@ -222,7 +303,7 @@ async function updateAssessment(req, res) {
     // Update assessment with new data
     profile.assessments[assessmentIndex] = {
       ...profile.assessments[assessmentIndex].toObject(),
-      ...req.body,
+      ...pick(req.body, ASSESSMENT_FIELDS),
       updatedAt: new Date()
     }
 
@@ -311,7 +392,7 @@ async function addTestSession(req, res) {
 
     // Add test session with current timestamp
     const testSession = {
-      ...req.body,
+      ...pick(req.body, TEST_SESSION_FIELDS),
       startTime: new Date(),
       status: 'active'
     }
@@ -350,7 +431,7 @@ async function updateTestSession(req, res) {
     // Update session with new data
     profile.testSessions[sessionIndex] = {
       ...profile.testSessions[sessionIndex].toObject(),
-      ...req.body,
+      ...pick(req.body, TEST_SESSION_FIELDS),
       updatedAt: new Date()
     }
 
@@ -378,7 +459,7 @@ async function getTestSessions(req, res) {
 
     if (req.query.teacherId) {
       testSessions = testSessions.filter(
-        (s) => s.teacherId === req.query.teacherId
+        (s) => String(s.teacherId) === String(req.query.teacherId)
       )
     }
 

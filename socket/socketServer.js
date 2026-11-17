@@ -8,17 +8,13 @@ import { leaveRoom } from '../utils/leave-room.js'
 import { handleChatEvents } from './chatHandlers.js'
 import { handleStatusEvents } from './statusHandlers.js'
 import { handleTestingEvents } from './testingHandlers.js'
+import { socketAuthMiddleware, profileRoom } from './socketAuth.js'
+import { allowedOrigins } from '../server.js'
 
 export function initializeSocketServer(server) {
   const io = new Server(server, {
     cors: {
-      origin: [
-        'http://localhost:3000',
-        'http://localhost:3001',
-        'http://localhost:3002',
-        'http://localhost:3003',
-        process.env.CLIENT_URL
-      ].filter(Boolean),
+      origin: allowedOrigins,
       methods: ['GET', 'POST'],
       credentials: true
     }
@@ -26,9 +22,16 @@ export function initializeSocketServer(server) {
 
   let allUsers = [] // All users across all rooms
 
+  // Reject sockets without a valid JWT
+  io.use(socketAuthMiddleware())
+
   // Listen for client connections
   io.on('connection', (socket) => {
-    console.log(`User connected: ${socket.id}`)
+    const identity = socket.data.identity
+    console.log(`User connected: ${socket.id} (${identity.role})`)
+
+    // Private room used to deliver presence/invites to this person only
+    socket.join(profileRoom(identity.profileId))
 
     // Initialize chat handlers
     const chatHandlers = handleChatEvents(socket, io, allUsers)
