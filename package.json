@@ -12,7 +12,9 @@
     "monitoring:start": "PERFORMANCE_MONITORING_ENABLED=true npm start",
     "production": "NODE_ENV=production npm start",
     "migrate:history": "node scripts/migrate-history.js",
-    "fetch:vosk-model": "node scripts/fetch-vosk-model.js"
+    "fetch:vosk-model": "node scripts/fetch-vosk-model.js",
+    "seed:demo": "node scripts/seed-demo.js",
+    "smoke": "node scripts/smoke-test.js"
   },
   "author": "Jan Horak",
   "license": "ISC",
