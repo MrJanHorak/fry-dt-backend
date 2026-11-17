@@ -19,6 +19,22 @@ export const progressRouter = Router()
 progressRouter.use(decodeUserFromToken, checkAuth)
 
 progressRouter.get(
+  '/insights',
+  requireRole('teacher', 'parent'),
+  asyncHandler(progressCtrl.getInsights)
+)
+progressRouter.get(
+  '/class/export.csv',
+  requireRole('teacher', 'parent'),
+  asyncHandler(progressCtrl.exportClassCsv)
+)
+progressRouter.get(
+  '/:studentId/export.csv',
+  validateObjectId('studentId'),
+  requireProfileAccess('studentId'),
+  asyncHandler(progressCtrl.exportStudentCsv)
+)
+progressRouter.get(
   '/class',
   requireRole('teacher', 'parent'),
   asyncHandler(progressCtrl.getClassProgress)

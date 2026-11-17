@@ -1,6 +1,8 @@
 import 'dotenv/config.js'
 
 import express from 'express'
+import path from 'path'
+import { fileURLToPath } from 'url'
 import logger from 'morgan'
 import cors from 'cors'
 import helmet from 'helmet'
@@ -62,7 +64,9 @@ app.use(helmet())
 app.use(
   cors({
     origin: allowedOrigins,
-    credentials: true
+    credentials: true,
+    // Lets the browser read the file name of CSV exports
+    exposedHeaders: ['Content-Disposition']
   })
 )
 
@@ -81,6 +85,24 @@ app.get('/health', (req, res) => {
     environment: process.env.NODE_ENV || 'development'
   })
 })
+
+// Self-hosted Vosk speech model for the "Say it" activity (see
+// scripts/fetch-vosk-model.js). Served cross-origin to the frontend only via
+// the CORS allow-list above; the browser caches it for a week.
+const serverDir = path.dirname(fileURLToPath(import.meta.url))
+app.use(
+  '/models',
+  (req, res, next) => {
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin')
+    next()
+  },
+  express.static(path.join(serverDir, 'public', 'models'), {
+    maxAge: '7d',
+    index: false,
+    dotfiles: 'deny',
+    fallthrough: true
+  })
+)
 
 // Operational/monitoring endpoints are admin-only (their /health stays public)
 const adminOnlyExceptHealth = (req, res, next) => {
