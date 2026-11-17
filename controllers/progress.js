@@ -4,6 +4,8 @@ import { WordAttempt } from '../models/wordAttempt.js'
 import { Assignment } from '../models/assignment.js'
 import { loadRequester, isEducatorOf } from '../middleware/authorize.js'
 import { getFryList, canonicalWord } from '../data/fryWords.js'
+import { classInsights } from '../services/insights.js'
+import { toCsv, sendCsv } from '../services/csv.js'
 import {
   summarizeStudent,
   listBreakdown,
@@ -299,4 +301,82 @@ export async function getClassProgress(req, res) {
   }
 
   res.json(classMatrix(students, byStudent, list))
+}
+
+async function loadRoster(requester, { fields = 'name avatar grade accommodations goal currentLevel' } = {}) {
+  const studentIds = [...requester.studentIds]
+  const [students, attempts] = await Promise.all([
+    Profile.find({ _id: { $in: studentIds } }).select(fields).sort({ name: 1 }).lean(),
+    WordAttempt.find({ student: { $in: studentIds } })
+      .select('student word wordKey correct automatic timed skill helpUsed date')
+      .lean()
+  ])
+  const byStudent = new Map()
+  for (const a of attempts) {
+    const key = String(a.student)
+    if (!byStudent.has(key)) byStudent.set(key, [])
+    byStudent.get(key).push(a)
+  }
+  return { students, byStudent }
+}
+
+const periodDays = (value) => Math.min(60, Math.max(1, Number(value) || 7))
+
+/** GET /api/progress/insights?days=7 – teacher's class at a glance */
+export async function getInsights(req, res) {
+  const requester = await loadRequester(req)
+  const { students, byStudent } = await loadRoster(requester)
+  res.json(classInsights(students, byStudent, { days: periodDays(req.query.days) }))
+}
+
+const pct = (v) => (v === null || v === undefined ? '' : Math.round(v * 100))
+
+/** GET /api/progress/class/export.csv?days=7 */
+export async function exportClassCsv(req, res) {
+  const requester = await loadRequester(req)
+  const { students, byStudent } = await loadRoster(requester)
+  const days = periodDays(req.query.days)
+  const data = classInsights(students, byStudent, { days })
+  const csv = toCsv(data.students, [
+    { key: 'name', label: 'Student' },
+    { key: 'grade', label: 'Grade' },
+    { key: 'mastered', label: 'Words mastered' },
+    { key: 'masteredGained', label: `Mastered in last ${days} days` },
+    { key: 'practiceDays', label: `Days practised (last ${days})` },
+    { key: 'attempts', label: `Words read (last ${days})` },
+    { label: 'Recent accuracy %', value: (r) => pct(r.accuracy) },
+    { label: 'Automaticity % (30 days)', value: (r) => pct(r.automaticityRate) },
+    { label: 'Goal (words)', value: (r) => r.goal.targetWords ?? '' },
+    { label: 'Goal date', value: (r) => (r.goal.targetDate ? String(r.goal.targetDate).slice(0, 10) : '') },
+    { label: 'Expected today', value: (r) => r.goal.expected ?? '' },
+    { label: 'Goal status', value: (r) => r.goal.status },
+    { label: 'Last practised', value: (r) => (r.lastPracticed ? r.lastPracticed.slice(0, 10) : 'never') },
+    { label: 'Needs attention', value: (r) => r.flags.map((f) => f.text).join('; ') }
+  ])
+  sendCsv(res, `class-progress-${data.period.to}.csv`, csv)
+}
+
+/** GET /api/progress/:studentId/export.csv – every word for one student */
+export async function exportStudentCsv(req, res) {
+  const { studentId } = req.params
+  const [student, attempts] = await Promise.all([
+    Profile.findById(studentId).select('name accommodations').lean(),
+    loadAttempts(studentId)
+  ])
+  if (!student) return res.status(404).json({ err: 'Student not found' })
+  const summaries = [...summarizeStudent(attempts, accommodationsOf(student)).values()].sort(
+    (a, b) => (a.fryList || 99) - (b.fryList || 99) || a.word.localeCompare(b.word)
+  )
+  const csv = toCsv(summaries, [
+    { key: 'word', label: 'Word' },
+    { label: 'Fry list', value: (w) => w.fryList || 'custom' },
+    { key: 'status', label: 'Status' },
+    { label: `Days correct (of ${MASTERY_DAYS})`, value: (w) => w.masteryDays },
+    { key: 'correct', label: 'Correct' },
+    { key: 'attempts', label: 'Tries' },
+    { label: 'Average seconds', value: (w) => (w.avgResponseMs ? (w.avgResponseMs / 1000).toFixed(1) : '') },
+    { label: 'Last seen', value: (w) => (w.lastSeen ? new Date(w.lastSeen).toISOString().slice(0, 10) : '') }
+  ])
+  const safeName = student.name.replace(/[^\w-]+/g, '-')
+  sendCsv(res, `${safeName}-words-${new Date().toISOString().slice(0, 10)}.csv`, csv)
 }

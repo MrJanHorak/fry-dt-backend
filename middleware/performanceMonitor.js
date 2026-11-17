@@ -103,8 +103,9 @@ class PerformanceMonitor {
         // Track memory usage
         const memoryDelta = endMemory.heapUsed - startMemory.heapUsed
 
-        // Add performance headers
-        res.set({
+        // Add performance headers (impossible once a streamed response,
+        // e.g. a static file download, has already sent its headers)
+        if (!res.headersSent) res.set({
           'X-Response-Time': `${responseTime.toFixed(2)}ms`,
           'X-Memory-Delta': `${memoryDelta}`,
           'X-Request-ID': req.headers['x-request-id'] || `req-${Date.now()}`

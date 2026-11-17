@@ -82,9 +82,12 @@ a row so struggling readers aren't discouraged.
   hear the word, the child hears the model and self-checks.
 - Sound-alike words (to/two/too, there/their …) are accepted, because a
   reader saying them aloud cannot be told apart.
-- Availability depends on the browser and device. Where it isn't
-  available, a self-hosted engine such as Vosk (WebAssembly, word-list
-  grammar) is the planned alternative.
+- Engines, most private/accurate first: the browser's built-in on-device
+  recognizer, or, where that doesn't exist (e.g. Chromebooks), **Vosk**
+  running in the page as WebAssembly with a speech pack served by this
+  server (`npm run fetch:vosk-model`). Vosk listens only for the target
+  word, sound-alikes, other session words and "unknown", rather than free
+  dictation. If neither engine is available, "Say it" is hidden.
 
 ## Accessibility and privacy
 
