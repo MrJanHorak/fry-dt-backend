@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "node ./bin/www.js",
-    "dev": "nodemon ./bin/www.js",
+    "dev": "node --watch ./bin/www.js",
     "test": "vitest run",
     "test:monitoring": "node ../archive/testing/e2e-monitoring-test.js",
     "security:audit": "node ../archive/utilities/security-audit.js",
@@ -33,9 +33,8 @@
     "tar": "^7.5.23"
   },
   "devDependencies": {
-    "nodemon": "^2.0.20",
     "socket.io-client": "^4.8.4",
     "supertest": "^7.2.2",
-    "vitest": "^3.2.4"
+    "vitest": "^5.1.0"
   }
 }

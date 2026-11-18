@@ -507,7 +507,7 @@ socket.on('test_word_received', (data) => {
 ### Scripts
 
 - `npm start` - Production server
-- `npm run dev` - Development with nodemon
+- `npm run dev` - Development with auto-restart (`node --watch`)
 - `npm run monitoring:start` - Start with performance monitoring
 - `npm run build:optimize` - Production optimization
 - `npm run production` - Production mode
